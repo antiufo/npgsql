@@ -1622,7 +1622,15 @@ namespace Npgsql
 
                 if (_prepared == PrepareStatus.NeedsPrepare)
                 {
-                    PrepareInternal();
+                    try
+                    {
+                        PrepareInternal();
+                    }
+                    catch (Exception ex)
+                    {
+                        this.Connector.MaybeTransitionToBroken(ex);
+                        throw;
+                    }
                 }
 
                 if (_prepared == PrepareStatus.NotPrepared)
@@ -1630,7 +1638,16 @@ namespace Npgsql
                     var commandText = GetCommandText();
 
                     // Write the Query message to the wire.
-                    _connector.SendQuery(commandText);
+                    try
+                    {
+                        _connector.SendQuery(commandText);
+                    }
+                    catch (Exception ex)
+                    {
+                        this.Connector.MaybeTransitionToBroken(ex);
+                        throw;
+                    }
+                   
 
                     // Tell to mediator what command is being sent.
                     if (_prepared == PrepareStatus.NotPrepared)

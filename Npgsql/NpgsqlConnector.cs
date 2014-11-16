@@ -791,13 +791,6 @@ namespace Npgsql
             {
                 return this.ReadMessageInternal();
             }
-            catch (IOException e)
-            {
-                // TODO: Identify socket timeout? But what to do at this point? Seems
-                // impossible to actually recover the connection (sync the protocol), best just
-                // transition to Broken like any other IOException...
-                throw;
-            }
             catch (ThreadAbortException)
             {
                 try
@@ -808,6 +801,17 @@ namespace Npgsql
                 catch { }
                 throw;
             }
+            catch (Exception e)
+            {
+                this.MaybeTransitionToBroken(e);
+
+                // This TODO referes to IOException only:
+                // TODO: Identify socket timeout? But what to do at this point? Seems
+                // impossible to actually recover the connection (sync the protocol), best just
+                // transition to Broken like any other IOException...
+                throw;
+            }
+       
         }
 
         [GenerateAsync]
@@ -1926,6 +1930,21 @@ namespace Npgsql
         }
 
         #endregion Misc
+
+        internal void MaybeTransitionToBroken(Exception ex)
+        {
+            if (
+                ex is IOException ||
+                ex is TimeoutException ||
+                ex is InvalidDataException ||
+                ex is System.Net.ProtocolViolationException ||
+                ex is System.Security.SecurityException ||
+                ex is System.Security.Cryptography.CryptographicException ||
+                ex is System.Security.Cryptography.Reimpl.CryptographicException)
+            {
+                this.State = ConnectorState.Broken;
+            }
+        }
     }
 
     /// <summary>
