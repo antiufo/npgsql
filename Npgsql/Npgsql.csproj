@@ -94,8 +94,8 @@
     <Reference Include="System.Transactions" />
     <Reference Include="System.Configuration" />
     <Reference Include="System.Xml" />
-    <Reference Include="Mono.Security">
-      <HintPath>..\lib\Mono.Security\4.0\Mono.Security.dll</HintPath>
+    <Reference Include="SystemReimpl">
+      <HintPath>..\..\Awdee\References\SystemReimpl.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup Condition="'$(Configuration)' == 'Release-net40' Or '$(Configuration)' == 'Debug-net40'">
