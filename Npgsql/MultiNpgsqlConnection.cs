@@ -4,10 +4,11 @@ using System.Data;
 using System.Data.Common;
 namespace Npgsql
 {
+
     public class MultiNpgsqlConnection : DbConnection
     {
-        public NpgsqlConnection primary;
-        private List<NpgsqlConnection> pool;
+        [ThreadStatic]
+        private static Dictionary<string, List<NpgsqlConnection>> globalPool;
         private string connectionString;
         public override string ConnectionString
         {
@@ -24,39 +25,28 @@ namespace Npgsql
         {
             get
             {
-                return this.primary.Database;
+                return GetAvailableConnection(true).Database;
             }
         }
         public override string DataSource
         {
             get
             {
-                return this.primary.DataSource;
+                return GetAvailableConnection(true).DataSource;
             }
         }
         public override string ServerVersion
         {
             get
             {
-                return this.primary.ServerVersion;
+                return GetAvailableConnection(true).ServerVersion;
             }
         }
         public override ConnectionState State
         {
             get
             {
-                if (this.pool == null)
-                {
-                    return ConnectionState.Closed;
-                }
                 return ConnectionState.Open;
-            }
-        }
-        public IEnumerable<NpgsqlConnection> PooledConnections
-        {
-            get
-            {
-                return this.pool;
             }
         }
         public MultiNpgsqlConnection(string connectionString)
@@ -69,64 +59,64 @@ namespace Npgsql
         }
         public override void Close()
         {
-            if (this.pool != null)
-            {
-                using (List<NpgsqlConnection>.Enumerator enumerator = this.pool.GetEnumerator())
-                {
-                    while (enumerator.MoveNext())
-                    {
-                        enumerator.Current.Close();
-                    }
-                }
-                this.pool = null;
-            }
         }
         public override void Open()
         {
-            if (this.pool == null)
-            {
-                this.pool = new List<NpgsqlConnection>();
-                this.primary = new NpgsqlConnection(this.connectionString);
-                this.pool.Add(this.primary);
-                this.primary.Open();
-            }
         }
         protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel)
         {
-            return this.GetAvailableConnection().BeginTransaction(isolationLevel);
+            return this.GetAvailableConnection(true).BeginTransaction(isolationLevel);
         }
         protected override DbCommand CreateDbCommand()
         {
-            return this.GetAvailableConnection().CreateCommand();
+            return this.GetAvailableConnection(true).CreateCommand();
         }
-        private NpgsqlConnection GetAvailableConnection()
+        private NpgsqlConnection GetAvailableConnection(bool open)
         {
-            foreach (NpgsqlConnection current in this.pool)
+            if (globalPool == null) globalPool = new Dictionary<string, List<NpgsqlConnection>>();
+            List<NpgsqlConnection> l;
+            if (!globalPool.TryGetValue(connectionString, out l))
             {
-                if (current.FullState == ConnectionState.Open)
+                l = new List<NpgsqlConnection>();
+                globalPool.Add(connectionString, l);
+            }
+            for (int i = 0; i < l.Count; i++)
+            {
+                var c = l[i];
+                if (c.FullState == ConnectionState.Broken)
+                {
+                    l.RemoveAt(i);
+                    i--;
+                }
+            }
+            foreach (NpgsqlConnection current in l)
+            {
+                if (current.FullState == ConnectionState.Open && current.ActiveCommands == 0)
                 {
                     return current;
                 }
             }
             NpgsqlConnection npgsqlConnection = new NpgsqlConnection(this.connectionString);
-            this.pool.Add(npgsqlConnection);
-            npgsqlConnection.Open();
+            if (open)
+                npgsqlConnection.Open();
+            l.Add(npgsqlConnection);
+
             return npgsqlConnection;
         }
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            if (disposing && this.pool != null)
-            {
-                using (List<NpgsqlConnection>.Enumerator enumerator = this.pool.GetEnumerator())
-                {
-                    while (enumerator.MoveNext())
-                    {
-                        enumerator.Current.Dispose();
-                    }
-                }
-                this.pool = null;
-            }
+            //if (disposing && this.pool != null)
+            //{
+            //    using (List<NpgsqlConnection>.Enumerator enumerator = this.pool.GetEnumerator())
+            //    {
+            //        while (enumerator.MoveNext())
+            //        {
+            //            enumerator.Current.Dispose();
+            //        }
+            //    }
+            //    this.pool = null;
+            //}
         }
     }
 }
