@@ -566,6 +566,8 @@ namespace Npgsql
             return BeginTransaction(isolationLevel);
         }
 
+        public int ActiveCommands { get; internal set; }
+
         /// <summary>
         /// Begins a database transaction.
         /// </summary>

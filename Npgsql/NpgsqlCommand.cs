@@ -246,10 +246,12 @@ namespace Npgsql
                 }
 
                 if (_connection != null) {
+                    _connection.ActiveCommands--;
                     _connection.StateChange -= OnConnectionStateChange;
                 }
                 _connection = value;
                 if (_connection != null) {
+                    _connection.ActiveCommands++;
                     _connection.StateChange += OnConnectionStateChange;
                 }
                 Transaction = null;
