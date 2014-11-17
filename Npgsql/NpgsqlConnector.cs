@@ -1852,6 +1852,10 @@ namespace Npgsql
         {
             try
             {
+                return
+                    this.State != ConnectorState.Broken &&
+                    this.State != ConnectorState.Closed &&
+                    this.BaseStream.IsConnectionAlive;
                 // Here we use a fake NpgsqlCommand, just to send the test query string.
 
                 // Get random test value.

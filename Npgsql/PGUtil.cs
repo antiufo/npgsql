@@ -921,6 +921,22 @@ namespace Npgsql
 
             base.Dispose(disposing);
         }
+
+        public bool IsConnectionAlive
+        {
+            get
+            {
+                try
+                {
+                    var dummy = this.DataAvailable;
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
     }
 
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
