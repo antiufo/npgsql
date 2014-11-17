@@ -51,7 +51,7 @@
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release-net45\</OutputPath>
-    <DefineConstants>TRACE;NET45;ENTITIES</DefineConstants>
+    <DefineConstants>NET45;ENTITIES</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <DocumentationFile>bin\Release-net45\Npgsql.xml</DocumentationFile>
