@@ -91,7 +91,7 @@ namespace Npgsql
             }
             foreach (NpgsqlConnection current in l)
             {
-                if (current.FullState == ConnectionState.Open && current.ActiveCommands == 0)
+                if (current.FullState == ConnectionState.Open && current.ActiveCommands == 0 && (current.Connector == null || current.Connector.Transaction == null))
                 {
                     return current;
                 }
