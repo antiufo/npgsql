@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Threading.Tasks;
+
 namespace Npgsql
 {
 
@@ -71,38 +73,73 @@ namespace Npgsql
         {
             return this.GetAvailableConnection(true).CreateCommand();
         }
+        public async Task<DbCommand> CreateCommandAsync()
+        {
+            var conn = this.GetAvailableConnection(false);
+            if (conn.State == ConnectionState.Closed)
+            {
+                await Task.Run(() => conn.Open());
+                var pool = GetPool(false);
+                pool.Add(conn);
+            }
+            return conn.CreateCommand();
+        }
         private NpgsqlConnection GetAvailableConnection(bool open)
         {
             if (globalPool == null) globalPool = new Dictionary<string, List<NpgsqlConnection>>();
+            List<NpgsqlConnection> l = GetPool(true);
+            var now = Environment.TickCount;
+            for (int i = 0; i < l.Count; i++)
+            {
+                var current = l[i];
+            
+            
+                if (current.FullState == ConnectionState.Open && current.ActiveCommands == 0 && (current.Connector == null || current.Connector.Transaction == null))
+                {
+                    var lastUsed = current.Connector.LastReceivedMessageTickCount;
+                    if (now - lastUsed > 20000 || now < lastUsed)
+                    {
+                        Task.Run(() => current.Dispose());
+                        l.RemoveAt(i);
+                        i--;
+                        continue;
+                    }
+                    return current;
+                }
+            }
+            NpgsqlConnection npgsqlConnection = new NpgsqlConnection(this.connectionString);
+            if (open)
+            {
+                npgsqlConnection.Open();
+                l.Add(npgsqlConnection);
+            }
+
+            return npgsqlConnection;
+        }
+
+        private List<NpgsqlConnection> GetPool(bool removeBroken)
+        {
             List<NpgsqlConnection> l;
             if (!globalPool.TryGetValue(connectionString, out l))
             {
                 l = new List<NpgsqlConnection>();
                 globalPool.Add(connectionString, l);
             }
-            for (int i = 0; i < l.Count; i++)
+            if (removeBroken)
             {
-                var c = l[i];
-                if (c.FullState == ConnectionState.Broken)
+                for (int i = 0; i < l.Count; i++)
                 {
-                    l.RemoveAt(i);
-                    i--;
+                    var c = l[i];
+                    if (c.FullState == ConnectionState.Broken)
+                    {
+                        l.RemoveAt(i);
+                        i--;
+                    }
                 }
             }
-            foreach (NpgsqlConnection current in l)
-            {
-                if (current.FullState == ConnectionState.Open && current.ActiveCommands == 0 && (current.Connector == null || current.Connector.Transaction == null))
-                {
-                    return current;
-                }
-            }
-            NpgsqlConnection npgsqlConnection = new NpgsqlConnection(this.connectionString);
-            if (open)
-                npgsqlConnection.Open();
-            l.Add(npgsqlConnection);
-
-            return npgsqlConnection;
+            return l;
         }
+
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);

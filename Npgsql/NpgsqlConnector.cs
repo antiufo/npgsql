@@ -348,17 +348,18 @@ namespace Npgsql
             // Keep track of time remaining; Even though there may be multiple timeout-able calls,
             // this allows us to still respect the caller's timeout expectation.
             var attemptStart = DateTime.Now;
-            var result = Dns.BeginGetHostAddresses(Host, null, null);
+            //var result = Dns.BeginGetHostAddresses(Host, null, null);
+            /*
+                        if (!result.AsyncWaitHandle.WaitOne(timeout, true))
+                        {
+                            // Timeout was used up attempting the Dns lookup
+                            throw new TimeoutException(L10N.DnsLookupTimeout);
+                        }
 
-            if (!result.AsyncWaitHandle.WaitOne(timeout, true))
-            {
-                // Timeout was used up attempting the Dns lookup
-                throw new TimeoutException(L10N.DnsLookupTimeout);
-            }
+                        timeout -= Convert.ToInt32((DateTime.Now - attemptStart).TotalMilliseconds);
 
-            timeout -= Convert.ToInt32((DateTime.Now - attemptStart).TotalMilliseconds);
-
-            var ips = Dns.EndGetHostAddresses(result);
+                        var ips = Dns.EndGetHostAddresses(result);*/
+            var ips = Dns.GetHostAddresses(Host);
             Socket socket = null;
             Exception lastSocketException = null;
 
@@ -374,7 +375,7 @@ namespace Npgsql
 
                 try
                 {
-                    result = socket.BeginConnect(ep, null, null);
+                    var result = socket.BeginConnect(ep, null, null);
 
                     if (!result.AsyncWaitHandle.WaitOne(timeout / (ips.Length - i), true))
                     {
@@ -814,6 +815,8 @@ namespace Npgsql
        
         }
 
+        public int LastReceivedMessageTickCount;
+
         [GenerateAsync]
         IServerMessage ReadMessageInternal()
         {
@@ -822,6 +825,7 @@ namespace Npgsql
                 // Check the first Byte of response.
                 Stream.Read(_buffer, 0, 1);
                 var message = (BackEndMessageCode) _buffer[0];
+                LastReceivedMessageTickCount = Environment.TickCount;
                 switch (message)
                 {
                     case BackEndMessageCode.ErrorResponse:
