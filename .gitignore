@@ -11,3 +11,4 @@
 [Oo]bj/
 packages/*/
 *.ide/
+.vs
