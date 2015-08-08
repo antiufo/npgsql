@@ -10,5 +10,8 @@
 [Oo]bj/
 [Oo]bj/
 packages/*/
-*.ide/
 .vs
+artifacts/
+# Roslyn cache directories
+*.ide/
+*.lock.json
