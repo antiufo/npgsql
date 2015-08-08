@@ -608,6 +608,7 @@ namespace Npgsql
                 if (ReaderClosed != null) {
                     ReaderClosed(this, EventArgs.Empty);
                 }
+                if (Command != null) Command.Dispose();
                 return;
             }
 

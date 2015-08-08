@@ -244,7 +244,9 @@ namespace Npgsql
                 }
 
                 IsPrepared = false;
+                if (_connection != null) _connection.ActiveCommands--;
                 _connection = value;
+                if (_connection != null) _connection.ActiveCommands++;
                 Transaction = null;
             }
         }
@@ -422,10 +424,23 @@ namespace Npgsql
 
         #region Prepare
 
+        public override void Prepare()
+        {
+            try
+            {
+                PrepareInternal()
+            }
+            catch (Exception ex)
+            {
+                if (this._connector != null) this._connector.MaybeTransitionToBroken(ex);
+                throw;
+            }
+        }
+
         /// <summary>
         /// Creates a prepared version of the command on a PostgreSQL server.
         /// </summary>
-        public override void Prepare()
+        public void PrepareInternal()
         {
             Prechecks();
             if (Parameters.Any(p => !p.IsTypeExplicitlySet)) {

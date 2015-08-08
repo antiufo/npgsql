@@ -457,6 +457,11 @@ namespace Npgsql
             }
         }
 
+        internal void MaybeTransitionToBroken(Exception ex)
+        {
+            throw new NotImplementedException();
+        }
+
         public void RawOpen(int timeout)
         {
             try
@@ -464,9 +469,9 @@ namespace Npgsql
                 // Keep track of time remaining; Even though there may be multiple timeout-able calls,
                 // this allows us to still respect the caller's timeout expectation.
                 var attemptStart = DateTime.Now;
-                var result = Dns.BeginGetHostAddresses(Host, null, null);
-
-                if (!result.AsyncWaitHandle.WaitOne(timeout, true))
+                //var result = Dns.BeginGetHostAddresses(Host, null, null);
+                var ips = Dns.GetHostAddresses(Host);
+               /* if (!result.AsyncWaitHandle.WaitOne(timeout, true))
                 {
                     // Timeout was used up attempting the Dns lookup
                     throw new TimeoutException("Dns hostname lookup timeout. Increase Timeout value in ConnectionString.");
@@ -474,7 +479,7 @@ namespace Npgsql
 
                 timeout -= Convert.ToInt32((DateTime.Now - attemptStart).TotalMilliseconds);
 
-                var ips = Dns.EndGetHostAddresses(result);
+                var ips = Dns.EndGetHostAddresses(result);*/
 
                 // try every ip address of the given hostname, use the first reachable one
                 // make sure not to exceed the caller's timeout expectation by splitting the
@@ -488,7 +493,7 @@ namespace Npgsql
 
                     try
                     {
-                        result = _socket.BeginConnect(ep, null, null);
+                        var result = _socket.BeginConnect(ep, null, null);
 
                         if (!result.AsyncWaitHandle.WaitOne(timeout / (ips.Length - i), true)) {
                             throw new TimeoutException("Connection establishment timeout. Increase Timeout value in ConnectionString.");

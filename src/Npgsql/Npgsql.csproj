@@ -22,10 +22,11 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>TRACE;DEBUG;NET45</DefineConstants>
+    <DefineConstants>DEBUG;NET45</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <DocumentationFile>bin\Debug\Npgsql.xml</DocumentationFile>
+    <DocumentationFile>
+    </DocumentationFile>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <LangVersion>5</LangVersion>
@@ -77,10 +78,11 @@
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE;NET45</DefineConstants>
+    <DefineConstants>NET45</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <DocumentationFile>bin\Release\Npgsql.xml</DocumentationFile>
+    <DocumentationFile>
+    </DocumentationFile>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <LangVersion>5</LangVersion>
@@ -137,6 +139,9 @@
     <Reference Include="System.Transactions" />
     <Reference Include="System.Configuration" />
     <Reference Include="System.Xml" />
+    <Reference Include="SystemReimpl">
+      <HintPath>C:\Repositories\Awdee\References\SystemReimpl.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AsyncRewriterHelpers.cs" />
@@ -163,6 +168,9 @@
     <Compile Include="Logging\INpgsqlLoggingProvider.cs" />
     <Compile Include="Logging\NpgsqlLogManager.cs" />
     <Compile Include="Logging\NpgsqlLogLevel.cs" />
+    <Compile Include="MultiNpgsqlConnection.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="NpgsqlLargeObjectManager.cs" />
     <Compile Include="NpgsqlLargeObjectStream.cs" />
     <Compile Include="NpgsqlBinaryExporter.cs" />
