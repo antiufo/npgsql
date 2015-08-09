@@ -30,10 +30,10 @@ using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Security;
+using System.Net.Security.Reimpl;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography.X509Certificates.Reimpl;
 using System.Threading;
 using AsyncRewriter;
 using Npgsql.BackendMessages;
@@ -116,7 +116,7 @@ namespace Npgsql
         /// a transaction is in progress, check <see cref="TransactionStatus"/> instead.
         /// </para>
         /// </remarks>
-        internal NpgsqlTransaction Transaction { private get; set; }
+        internal NpgsqlTransaction Transaction { get; set; }
 
         /// <summary>
         /// The NpgsqlConnection that (currently) owns this connector. Null if the connector isn't
@@ -470,11 +470,6 @@ namespace Npgsql
                 }
                 throw;
             }
-        }
-
-        internal void MaybeTransitionToBroken(Exception ex)
-        {
-            throw new NotImplementedException();
         }
 
         public void RawOpen(int timeout)

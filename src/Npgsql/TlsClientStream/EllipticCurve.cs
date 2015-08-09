@@ -27,8 +27,8 @@ using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Numerics;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography.Reimpl;
+using System.Security.Cryptography.X509Certificates.Reimpl;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -1112,7 +1112,7 @@ namespace TlsClientStream
 
         public static bool? VerifySignatureCng(byte[] pkParameters, byte[] pkKey, byte[] hash, byte[] signature)
         {
-#if !__MonoCS__
+#if false && !__MonoCS__
             EllipticCurve curve = null;
             var ecsngHeader = new byte[8] { (byte)'E', (byte)'C', (byte)'S', 0, 0, 0, 0, 0 };
 
