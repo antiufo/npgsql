@@ -38,6 +38,7 @@ using AsyncRewriter;
 using Npgsql.BackendMessages;
 using Npgsql.FrontendMessages;
 using Npgsql.Logging;
+using Shaman.Runtime;
 
 namespace Npgsql
 {
@@ -443,6 +444,7 @@ namespace Npgsql
         public void PrepareInternal()
         {
             Prechecks();
+            BlockingIoWaiver.Check();
             if (Parameters.Any(p => !p.IsTypeExplicitlySet)) {
                 throw new InvalidOperationException("NpgsqlCommand.Prepare method requires all parameters to have an explicitly set type.");
             }
@@ -828,6 +830,9 @@ namespace Npgsql
             }
         }
 
+
+ 
+
         #endregion Execute Non Query
 
         #region Execute Scalar
@@ -866,10 +871,10 @@ namespace Npgsql
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        [RewriteAsync]
         object ExecuteScalarInternal()
         {
             Prechecks();
+            BlockingIoWaiver.Check();
             Log.Debug("ExecuteNonScalar", Connection.Connector.Id);
             using (Connection.Connector.StartUserAction())
             {
@@ -878,6 +883,22 @@ namespace Npgsql
                 using (var reader = Execute(behavior))
                 {
                     return reader.Read() && reader.FieldCount != 0 ? reader.GetValue(0) : null;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        async Task<object> ExecuteScalarInternalAsync()
+        {
+            Prechecks();
+            Log.Debug("ExecuteNonScalar", Connection.Connector.Id);
+            using (Connection.Connector.StartUserAction())
+            {
+                var behavior = CommandBehavior.SequentialAccess | CommandBehavior.SingleRow;
+                ValidateAndCreateMessages(behavior);
+                using (var reader = await ExecuteAsync(behavior))
+                {
+                    return await reader.ReadAsync() && reader.FieldCount != 0 ? reader.GetValue(0) : null;
                 }
             }
         }
@@ -1029,12 +1050,19 @@ namespace Npgsql
                 throw new InvalidOperationException("Connection property has not been initialized.");
 
             var connector = Connection.Connector;
-            if (State != CommandState.InProgress) {
+            if (State != CommandState.InProgress)
+            {
                 Log.Debug(String.Format("Skipping cancel because command is in state {0}", State), connector.Id);
                 return;
             }
 
             Log.Debug("Cancelling command", connector.Id);
+            if (SynchronizationContext.Current != null) Task.Run(() => TryCancelRequest(connector));
+            else TryCancelRequest(connector);
+        }
+
+        private static void TryCancelRequest(NpgsqlConnector connector)
+        {
             try
             {
                 connector.CancelRequest();

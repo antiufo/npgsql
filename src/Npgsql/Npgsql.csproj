@@ -161,6 +161,7 @@
     <Compile Include="BackendMessages\ParseCompleteMessage.cs" />
     <Compile Include="BackendMessages\RowDescriptionMessage.cs" />
     <Compile Include="BackendMessages\DataRowSequentialMessage.cs" />
+    <Compile Include="BlockingIoWaiver.cs" />
     <Compile Include="FrontendMessages\CopyFailMessage.cs" />
     <Compile Include="ICancelable.cs" />
     <Compile Include="Logging\NoOpLoggingProvider.cs" />

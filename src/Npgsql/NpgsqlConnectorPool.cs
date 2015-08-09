@@ -27,6 +27,7 @@ using System.Data;
 using System.Diagnostics.Contracts;
 using System.Threading;
 using Npgsql.Logging;
+using Shaman.Runtime;
 
 namespace Npgsql
 {
@@ -214,6 +215,7 @@ namespace Npgsql
         /// </summary>
         private NpgsqlConnector GetPooledConnector(NpgsqlConnection Connection)
         {
+            BlockingIoWaiver.Check();
             ConnectorQueue Queue = null;
             NpgsqlConnector Connector = null;
 
@@ -243,7 +245,7 @@ namespace Npgsql
                     // Check if the connector is still valid.
 
                     Connector = Queue.Available.Dequeue();
-                    if (Connector.State != ConnectorState.Broken && Connector.State != ConnectorState.Closed && Connection.Connector.Buffer.IsConnectionAlive)
+                    if (Connector.State != ConnectorState.Broken && Connector.State != ConnectorState.Closed && Connector.Buffer != null && Connector.Buffer.IsConnectionAlive == true)
                     {
                         Queue.Busy.Add(Connector, null);
                         break;
@@ -334,6 +336,7 @@ namespace Npgsql
         /// <param name="connector">The connector to release.</param>
         internal void ReleaseConnector(NpgsqlConnection connection, NpgsqlConnector connector)
         {
+            BlockingIoWaiver.Check();
             Contract.Requires(connector.IsReady || connector.IsClosed || connector.IsBroken);
 
             ConnectorQueue queue;

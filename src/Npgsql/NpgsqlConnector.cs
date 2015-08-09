@@ -41,6 +41,7 @@ using Npgsql.FrontendMessages;
 using Npgsql.TypeHandlers;
 using NpgsqlTypes;
 using Npgsql.Logging;
+using Shaman.Runtime;
 
 namespace Npgsql
 {
@@ -405,7 +406,7 @@ namespace Npgsql
             Contract.Ensures(State == ConnectorState.Ready);
 
             State = ConnectorState.Connecting;
-
+            BlockingIoWaiver.Check();
             ServerVersion = null;
 
             // Keep track of time remaining; Even though there may be multiple timeout-able calls,
@@ -787,6 +788,7 @@ namespace Npgsql
         /// <param name="msg"></param>
         internal void SendSingleMessage(FrontendMessage msg)
         {
+            BlockingIoWaiver.Check();
             AddMessage(msg);
             SendAllMessages();
         }
@@ -1761,6 +1763,7 @@ namespace Npgsql
 
         internal void ExecuteInternalCommand(SimpleFrontendMessage message, bool withTimeout=true)
         {
+            BlockingIoWaiver.Check();
             using (StartUserAction())
             {
                 if (withTimeout) {

@@ -33,6 +33,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AsyncRewriter;
 using System.Net.Sockets;
+using Shaman.Runtime;
 
 namespace Npgsql
 {
@@ -105,8 +106,18 @@ namespace Npgsql
 
         #region I/O
 
-        [RewriteAsync]
         internal void Ensure(int count)
+        {
+            BlockingIoWaiver.Check();
+            EnsureInternal(count);
+        }
+        internal Task EnsureAsync(int count)
+        {
+            return EnsureInternalAsync(count);
+        }
+
+        [RewriteAsync]
+        internal void EnsureInternal(int count)
         {
             Contract.Requires(count <= Size);
             count -= ReadBytesLeft;
