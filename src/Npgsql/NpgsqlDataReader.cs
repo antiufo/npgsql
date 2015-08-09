@@ -1933,6 +1933,13 @@ WHERE a.attnum > 0
             ReadAgain,
         }
 
+        public Task FillBufferForCurrentRowAsync()
+        {
+            var r = _row as DataRowNonSequentialMessage;
+            if (r != null) return r.FillBufferForCurrentRowAsync();
+            return PGUtil.CompletedTask;
+        }
+
         #endregion
     }
 }

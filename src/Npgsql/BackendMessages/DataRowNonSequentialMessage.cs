@@ -76,6 +76,11 @@ namespace Npgsql.BackendMessages
             }
         }
 
+        public Task FillBufferForCurrentRowAsync()
+        {
+            return Buffer.EnsureAsync(_endOffset - Buffer.ReadPosition);
+        }
+
         internal override Task SeekToColumnAsync(int column)
         {
             SeekToColumn(column);
