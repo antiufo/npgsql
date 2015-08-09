@@ -26,8 +26,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography.Reimpl;
+using System.Security.Cryptography.X509Certificates.Reimpl;
 using System.Text;
 using System.Text.RegularExpressions;
 
