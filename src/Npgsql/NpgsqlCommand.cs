@@ -428,7 +428,7 @@ namespace Npgsql
         {
             try
             {
-                PrepareInternal()
+                PrepareInternal();
             }
             catch (Exception ex)
             {

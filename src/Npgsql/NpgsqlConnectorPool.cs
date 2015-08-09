@@ -236,14 +236,29 @@ namespace Npgsql
             // Now we can simply lock on the pool itself.
             lock (Queue)
             {
-                if (Queue.Available.Count > 0)
+                while (Queue.Available.Count > 0)
                 {
                     // Found a queue with connectors.  Grab the top one.
 
                     // Check if the connector is still valid.
 
                     Connector = Queue.Available.Dequeue();
-                    Queue.Busy.Add(Connector, null);
+                    if (Connector.State != ConnectorState.Broken && Connector.State != ConnectorState.Closed && Connection.Connector.Buffer.IsConnectionAlive)
+                    {
+                        Queue.Busy.Add(Connector, null);
+                        break;
+                    }
+                    else
+                    {
+                        try
+                        {
+                            Connector.Close();
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        Connector = null;
+                    }
                 }
             }
 

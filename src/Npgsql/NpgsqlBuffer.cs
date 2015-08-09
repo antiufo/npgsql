@@ -32,6 +32,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AsyncRewriter;
+using System.Net.Sockets;
 
 namespace Npgsql
 {
@@ -99,6 +100,9 @@ namespace Npgsql
 
         #endregion
 
+        public int LastReceivedMessageTickCount;
+
+
         #region I/O
 
         [RewriteAsync]
@@ -121,6 +125,7 @@ namespace Npgsql
                 var toRead = Size - _filledBytes;
                 var read = Underlying.Read(_buf, _filledBytes, toRead);
                 if (read == 0) { throw new EndOfStreamException(); }
+                LastReceivedMessageTickCount = Environment.TickCount;
                 count -= read;
                 _filledBytes += read;
             }
@@ -603,6 +608,32 @@ namespace Npgsql
         internal MemoryStream GetMemoryStream(int len)
         {
             return new MemoryStream(_buf, ReadPosition, len, false, false);
+        }
+
+        public bool IsConnectionAlive
+        {
+            get
+            {
+                try
+                {
+                    var networkStream = Underlying as NetworkStream;
+                    if (networkStream == null)
+                    {
+                        var tls = Underlying as TlsClientStream.TlsClientStream;
+                        if (tls != null)
+                        {
+                            networkStream = tls.BaseStream as NetworkStream;
+                        }
+                    }
+                    if (networkStream == null) return true;
+                    var dummy = networkStream.DataAvailable;
+                    return true;
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
+            }
         }
 
         internal void ResetTotalBytesFlushed()

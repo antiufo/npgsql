@@ -96,8 +96,8 @@ namespace Npgsql
             
                 if (current.FullState == ConnectionState.Open && current.ActiveCommands == 0 && (current.Connector == null || current.Connector.Transaction == null))
                 {
-                    var lastUsed = current.Connector.LastReceivedMessageTickCount;
-                    if (now - lastUsed > 20000 || now<lastUsed)
+                    var lastUsed = current.Connector.Buffer.LastReceivedMessageTickCount;
+                    if (now - lastUsed > 20000 || now < lastUsed)
                     {
                         Task.Run(() => current.Dispose());
                         l.RemoveAt(i);

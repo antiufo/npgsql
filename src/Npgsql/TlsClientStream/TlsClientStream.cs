@@ -116,6 +116,11 @@ namespace TlsClientStream
             _baseStream = baseStream;
         }
 
+        public Stream BaseStream
+        {
+            get { return _baseStream; }
+        }
+
         #region Record layer
 
         /// <summary>
