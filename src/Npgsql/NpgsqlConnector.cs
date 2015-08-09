@@ -124,21 +124,6 @@ namespace Npgsql
         /// </summary>
         internal NpgsqlConnection Connection { get; set; }
 
-        internal void MaybeTransitionToBroken(Exception ex)
-        {
-            if (
-                ex is IOException ||
-                ex is TimeoutException ||
-                ex is InvalidDataException ||
-                ex is System.Net.ProtocolViolationException ||
-                ex is System.Security.SecurityException ||
-                ex is System.Security.Cryptography.CryptographicException ||
-                ex is System.Security.Cryptography.Reimpl.CryptographicException)
-            {
-                this.State = ConnectorState.Broken;
-            }
-        }
-
         /// <summary>
         /// The number of messages that were prepended to the current message chain, but not yet sent.
         /// Note that this only tracks messages which produce a ReadyForQuery message

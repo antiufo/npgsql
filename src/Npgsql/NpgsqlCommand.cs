@@ -430,9 +430,9 @@ namespace Npgsql
             {
                 PrepareInternal();
             }
-            catch (Exception ex)
+            catch (Exception )
             {
-                if (this._connector != null) this._connector.MaybeTransitionToBroken(ex);
+                if (this._connector != null) this._connector.Break();
                 throw;
             }
         }
