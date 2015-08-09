@@ -108,16 +108,15 @@ namespace Npgsql
 
         internal void Ensure(int count)
         {
-            BlockingIoWaiver.Check();
-            EnsureInternal(count);
+            EnsureInternal(count, true);
         }
         internal Task EnsureAsync(int count)
         {
-            return EnsureInternalAsync(count);
+            return EnsureInternalAsync(count, false);
         }
 
         [RewriteAsync]
-        internal void EnsureInternal(int count)
+        internal void EnsureInternal(int count, bool synchronous)
         {
             Contract.Requires(count <= Size);
             count -= ReadBytesLeft;
@@ -129,6 +128,11 @@ namespace Npgsql
                 Array.Copy(_buf, ReadPosition, _buf, 0, ReadBytesLeft);
                 _filledBytes = ReadBytesLeft;
                 ReadPosition = 0;
+            }
+
+            if (count > 0)
+            {
+                BlockingIoWaiver.Check();
             }
 
             while (count > 0)
