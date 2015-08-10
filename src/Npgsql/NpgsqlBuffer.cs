@@ -33,7 +33,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using AsyncRewriter;
 using System.Net.Sockets;
-using Shaman.Runtime;
 
 namespace Npgsql
 {
@@ -132,7 +131,7 @@ namespace Npgsql
 
             if (count > 0)
             {
-                BlockingIoWaiver.Check();
+                BlockingIoHandler.Check();
             }
 
             while (count > 0)

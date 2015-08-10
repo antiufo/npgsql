@@ -27,7 +27,6 @@ using System.Data;
 using System.Diagnostics.Contracts;
 using System.Threading;
 using Npgsql.Logging;
-using Shaman.Runtime;
 
 namespace Npgsql
 {
@@ -215,7 +214,7 @@ namespace Npgsql
         /// </summary>
         private NpgsqlConnector GetPooledConnector(NpgsqlConnection Connection)
         {
-            BlockingIoWaiver.Check();
+            BlockingIoHandler.Check();
             ConnectorQueue Queue = null;
             NpgsqlConnector Connector = null;
 
@@ -336,7 +335,7 @@ namespace Npgsql
         /// <param name="connector">The connector to release.</param>
         internal void ReleaseConnector(NpgsqlConnection connection, NpgsqlConnector connector)
         {
-            BlockingIoWaiver.Check();
+            BlockingIoHandler.Check();
             Contract.Requires(connector.IsReady || connector.IsClosed || connector.IsBroken);
 
             ConnectorQueue queue;

@@ -38,7 +38,6 @@ using AsyncRewriter;
 using Npgsql.BackendMessages;
 using Npgsql.FrontendMessages;
 using Npgsql.Logging;
-using Shaman.Runtime;
 
 namespace Npgsql
 {
@@ -444,7 +443,7 @@ namespace Npgsql
         public void PrepareInternal()
         {
             Prechecks();
-            BlockingIoWaiver.Check();
+            BlockingIoHandler.Check();
             if (Parameters.Any(p => !p.IsTypeExplicitlySet)) {
                 throw new InvalidOperationException("NpgsqlCommand.Prepare method requires all parameters to have an explicitly set type.");
             }
@@ -874,7 +873,7 @@ namespace Npgsql
         object ExecuteScalarInternal()
         {
             Prechecks();
-            BlockingIoWaiver.Check();
+            BlockingIoHandler.Check();
             Log.Debug("ExecuteNonScalar", Connection.Connector.Id);
             using (Connection.Connector.StartUserAction())
             {
