@@ -1043,8 +1043,7 @@ namespace Npgsql
         /// <remarks>As per the specs, no exception will be thrown by this method in case of failure</remarks>
         public override void Cancel()
         {
-            if (State == CommandState.Disposed)
-                throw new ObjectDisposedException(GetType().FullName);
+            if (State == CommandState.Disposed) return;
             if (Connection == null)
                 throw new InvalidOperationException("Connection property has not been initialized.");
 
