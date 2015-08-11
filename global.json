@@ -1,3 +1,11 @@
 {
-    "sources": [ "src", "external/EntityFramework/src", "external/EntityFramework/test" ]
+  "sources": [
+    "src",
+    "external/EntityFramework/src",
+    "external/EntityFramework/test"
+  ],
+  "projects": [
+    "wrap",
+    "src\\"
+  ]
 }

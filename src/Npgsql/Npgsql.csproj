@@ -140,7 +140,7 @@
     <Reference Include="System.Configuration" />
     <Reference Include="System.Xml" />
     <Reference Include="SystemReimpl">
-      <HintPath>C:\Repositories\Awdee\References\SystemReimpl.dll</HintPath>
+      <HintPath>..\..\packages\SystemReimpl.1.0.0-beta-2550\lib\net45\SystemReimpl.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
