@@ -1,5 +1,5 @@
-﻿{
-  "version": "3.0.0-beta-6358",
+{
+  "version": "3.0.0-beta-6359",
   "frameworks": {
     "net45": {
       "wrappedProject": "../../src/Npgsql/Npgsql.csproj",
@@ -8,7 +8,7 @@
         "pdb": "../../src/Npgsql/obj/{configuration}/Npgsql.pdb"
       },
       "dependencies": {
-        "Shaman.SystemReimpl": "1.0.0-beta-2552"
+        "Shaman.SystemReimpl": "1.0.0-beta-2553"
       }
     }
   }
