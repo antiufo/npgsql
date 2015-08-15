@@ -466,14 +466,14 @@ namespace Npgsql
                 if (value is DateTime)
                 {
                     return ((DateTime) value).Kind == DateTimeKind.Utc
-                        ? this[NpgsqlDbType.TimestampTZ]
-                        : this[NpgsqlDbType.Timestamp];
+                        ? this[NpgsqlDbType.Timestamp]
+                        : this[NpgsqlDbType.TimestampTZ];
                 }
 
                 if (value is NpgsqlDateTime) {
                     return ((NpgsqlDateTime)value).Kind == DateTimeKind.Utc
-                        ? this[NpgsqlDbType.TimestampTZ]
-                        : this[NpgsqlDbType.Timestamp];
+                        ? this[NpgsqlDbType.Timestamp]
+                        : this[NpgsqlDbType.TimestampTZ];
                 }
 
                 return this[value.GetType()];
