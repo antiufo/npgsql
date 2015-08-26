@@ -628,6 +628,7 @@ namespace Npgsql
 
             State = ReaderState.Closed;
             Command.State = CommandState.Idle;
+            Command.Dispose();
             _connector.CurrentReader = null;
             _connector.EndUserAction();
 
