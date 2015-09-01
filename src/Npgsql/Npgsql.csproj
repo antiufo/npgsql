@@ -173,6 +173,7 @@
     <Compile Include="MultiNpgsqlConnection.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="NoParallelInvocationsGuard.cs" />
     <Compile Include="NpgsqlLargeObjectManager.cs" />
     <Compile Include="NpgsqlLargeObjectStream.cs" />
     <Compile Include="NpgsqlBinaryExporter.cs" />

@@ -255,6 +255,11 @@ namespace Npgsql
             }
         }
 
+        internal void IncrementUsageCount()
+        {
+            Interlocked.Increment(ref ActiveCommands);
+        }
+
         #endregion Connection string management
 
         #region Configuration settings
@@ -266,6 +271,11 @@ namespace Npgsql
         [Browsable(true)]
 #endif
         public string Host { get { return Settings.Host; } }
+
+        internal void DecrementUsageCount()
+        {
+            Interlocked.Decrement(ref ActiveCommands);
+        }
 
         /// <summary>
         /// Backend server port.
@@ -462,7 +472,7 @@ namespace Npgsql
             return BeginTransaction(isolationLevel);
         }
 
-        public int ActiveCommands { get; internal set; }
+        internal int ActiveCommands;
 
         /// <summary>
         /// Begins a database transaction.

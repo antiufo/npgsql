@@ -15,5 +15,6 @@ namespace Npgsql
         }
 
         public static Action CheckDelegate;
+        public static Func<bool> IsMainThread;
     }
 }

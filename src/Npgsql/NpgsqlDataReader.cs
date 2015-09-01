@@ -53,7 +53,7 @@ namespace Npgsql
         readonly NpgsqlConnection _connection;
         readonly CommandBehavior _behavior;
 
-        ReaderState State { get; set; }
+        internal ReaderState State { get; private set; }
 
         /// <summary>
         /// Holds the list of statements being executed by this reader.
@@ -171,6 +171,8 @@ namespace Npgsql
             return await ReadInternalAsync().ConfigureAwait(false);
         }
 
+        internal bool SuppressCancelSignal;
+
         [RewriteAsync]
         bool ReadInternal()
         {
@@ -261,6 +263,7 @@ namespace Npgsql
                     goto case BackendMessageCode.EmptyQueryResponse;
 
                 case BackendMessageCode.EmptyQueryResponse:
+                    SuppressCancelSignal = true;
                     State = ReaderState.BetweenResults;
                     return ReadResult.RowNotRead;
 
@@ -552,6 +555,18 @@ namespace Npgsql
 
         #region Cleanup / Dispose
 
+        void Consume()
+        {
+            ConsumeInternal(true);
+        }
+        
+        Task ConsumeAsync()
+        {
+            
+            return ConsumeInternalAsync(false);
+        }
+
+
         /// <summary>
         /// Consumes all result sets for this reader, leaving the connector ready for sending and processing further
         /// queries
@@ -594,30 +609,49 @@ namespace Npgsql
         /// </summary>
         public override void Close()
         {
+            if (dontCloseAsynchronously) CloseInternal();
+            else CloseAsync();
+        }
+
+        private void CloseAsync()
+        {
+            if (!hasStartedClosing)
+                CloseInternalAsync().GetAwaiter();
+        }
+
+        internal bool dontCloseAsynchronously;
+        private bool hasStartedClosing;
+        [RewriteAsync]
+        private void CloseInternal()
+        {
+            hasStartedClosing = true;
             if (State == ReaderState.Closed) { return; }
 
             switch (_connector.State)
             {
-            case ConnectorState.Broken:
-            case ConnectorState.Closed:
-                // This may have happen because an I/O error while reading a value, or some non-safe
-                // exception thrown from a type handler. Or if the connection was closed while the reader
-                // was still open
-                State = ReaderState.Closed;
-                Command.State = CommandState.Idle;
-                if (ReaderClosed != null) {
-                    ReaderClosed(this, EventArgs.Empty);
-                }
-                if (Command != null) Command.Dispose();
-                return;
+                case ConnectorState.Broken:
+                case ConnectorState.Closed:
+                    // This may have happen because an I/O error while reading a value, or some non-safe
+                    // exception thrown from a type handler. Or if the connection was closed while the reader
+                    // was still open
+                    State = ReaderState.Closed;
+                    Command.State = CommandState.Idle;
+                    if (ReaderClosed != null)
+                    {
+                        ReaderClosed(this, EventArgs.Empty);
+                    }
+                    if (Command != null) Command.Dispose();
+                    return;
             }
 
-            if (State != ReaderState.Consumed) {
+            if (State != ReaderState.Consumed)
+            {
                 Consume();
             }
 
             Cleanup();
         }
+
 
         internal void Cleanup()
         {
@@ -1919,7 +1953,7 @@ WHERE a.attnum > 0
 
         #region Enums
 
-        enum ReaderState
+        internal enum ReaderState
         {
             InResult,
             BetweenResults,

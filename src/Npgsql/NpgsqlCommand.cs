@@ -244,10 +244,19 @@ namespace Npgsql
                 }
 
                 IsPrepared = false;
-                if (_connection != null) _connection.ActiveCommands--;
+                ClearConnection();
                 _connection = value;
-                if (_connection != null) _connection.ActiveCommands++;
+                if (_connection != null) Connection.IncrementUsageCount();
                 Transaction = null;
+            }
+        }
+
+        private void ClearConnection()
+        {
+            var conn = Interlocked.Exchange(ref _connection, null);
+            if (conn != null)
+            {
+                conn.DecrementUsageCount();
             }
         }
 
@@ -1054,10 +1063,21 @@ namespace Npgsql
                 return;
             }
 
+            var reader = connector.CurrentReader;
+            if (reader != null)
+            {
+                var state = reader.State;
+                if (reader.SuppressCancelSignal || state == NpgsqlDataReader.ReaderState.Consumed)
+                {
+                    return;
+                }
+            }
+
             Log.Debug("Cancelling command", connector.Id);
             if (SynchronizationContext.Current != null) Task.Run(() => TryCancelRequest(connector));
             else TryCancelRequest(connector);
         }
+        
 
         private static void TryCancelRequest(NpgsqlConnector connector)
         {
@@ -1101,11 +1121,17 @@ namespace Npgsql
                     DeallocatePrepared();
                 }
             }
+            else
+            {
+
+            }
             Transaction = null;
-            Connection = null;
+            IsPrepared = false;
+            ClearConnection();
             State = CommandState.Disposed;
             base.Dispose(disposing);
         }
+
 
         #endregion
 
