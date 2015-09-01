@@ -572,8 +572,9 @@ namespace Npgsql
         /// queries
         /// </summary>
         [RewriteAsync]
-        void Consume()
+        void ConsumeInternal(bool synchronous)
         {
+            if (synchronous) BlockingIoHandler.Check();
             if (IsSchemaOnly)
             {
                 State = ReaderState.Consumed;
