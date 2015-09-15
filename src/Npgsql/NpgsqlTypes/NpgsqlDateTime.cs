@@ -78,16 +78,16 @@ namespace NpgsqlTypes
             _time = time;
         }
 
-        public NpgsqlDateTime(NpgsqlDate date, TimeSpan time, DateTimeKind kind = DateTimeKind.Unspecified)
+        public NpgsqlDateTime(NpgsqlDate date, TimeSpan time, DateTimeKind kind = DateTimeKind.Utc)
             : this(KindToInternalType(kind), date, time) {}
 
         public NpgsqlDateTime(NpgsqlDate date)
             : this(date, TimeSpan.Zero) {}
 
-        public NpgsqlDateTime(int year, int month, int day, int hours, int minutes, int seconds, DateTimeKind kind=DateTimeKind.Unspecified)
+        public NpgsqlDateTime(int year, int month, int day, int hours, int minutes, int seconds, DateTimeKind kind=DateTimeKind.Utc)
             : this(new NpgsqlDate(year, month, day), new TimeSpan(0, hours, minutes, seconds), kind) {}
 
-        public NpgsqlDateTime(int year, int month, int day, int hours, int minutes, int seconds, int milliseconds, DateTimeKind kind = DateTimeKind.Unspecified)
+        public NpgsqlDateTime(int year, int month, int day, int hours, int minutes, int seconds, int milliseconds, DateTimeKind kind = DateTimeKind.Utc)
             : this(new NpgsqlDate(year, month, day), new TimeSpan(0, hours, minutes, seconds, milliseconds), kind) { }
 
         public NpgsqlDateTime(DateTime dateTime)
@@ -97,7 +97,7 @@ namespace NpgsqlTypes
             : this(new DateTime(ticks, kind)) { }
 
         public NpgsqlDateTime(long ticks)
-            : this(new DateTime(ticks, DateTimeKind.Unspecified)) { }
+            : this(new DateTime(ticks, DateTimeKind.Utc)) { }
 
         #endregion
 
