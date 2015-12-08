@@ -866,8 +866,6 @@ namespace Npgsql
         internal BackendType Array;
 
         /// <summary>
-<<<<<<< HEAD
-=======
         /// For composite types, contains the pg_class.oid for the type
         /// </summary>
         internal uint RelationId;
@@ -878,7 +876,6 @@ namespace Npgsql
         internal List<Tuple<string, uint>> RawFields;
 
         /// <summary>
->>>>>>> develop
         /// Returns a string that represents the current object.
         /// </summary>
         public override string ToString()

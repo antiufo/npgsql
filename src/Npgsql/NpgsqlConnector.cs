@@ -28,11 +28,16 @@ using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Security.Reimpl;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
+#if CORECLR
+using System.Security.Cryptography.X509Certificates;
+using System.Net.Security;
+#else
 using System.Security.Cryptography.X509Certificates.Reimpl;
+using System.Net.Security.Reimpl;
+#endif
 using System.Threading;
 using System.Threading.Tasks;
 using AsyncRewriter;

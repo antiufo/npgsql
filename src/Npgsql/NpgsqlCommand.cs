@@ -953,7 +953,7 @@ namespace Npgsql
             {
                 var behavior = CommandBehavior.SequentialAccess | CommandBehavior.SingleRow;
                 ValidateAndCreateMessages(behavior);
-                using (var reader = await ExecuteAsync(behavior))
+                using (var reader = await ExecuteAsync(CancellationToken.None, behavior))
                 {
                     return await reader.ReadAsync() && reader.FieldCount != 0 ? reader.GetValue(0) : null;
                 }

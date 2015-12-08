@@ -622,7 +622,7 @@ namespace Npgsql
         Task ConsumeAsync()
         {
             
-            return ConsumeInternalAsync(false);
+            return ConsumeInternalAsync(false, CancellationToken.None);
         }
 
 
@@ -688,7 +688,7 @@ namespace Npgsql
         private void CloseAsync()
         {
             if (!hasStartedClosing)
-                CloseInternalAsync().GetAwaiter();
+                CloseInternalAsync(CancellationToken.None).GetAwaiter();
         }
 
         internal bool dontCloseAsynchronously;

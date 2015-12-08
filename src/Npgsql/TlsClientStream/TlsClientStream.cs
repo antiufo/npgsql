@@ -32,8 +32,15 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Numerics;
+#if CORECLR
+using System.Net.Security;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+#else
+using System.Net.Security.Reimpl;
 using System.Security.Cryptography.Reimpl;
 using System.Security.Cryptography.X509Certificates.Reimpl;
+#endif
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1698,7 +1705,7 @@ namespace TlsClientStream
         }
 
         //[RewriteAsync]
-        public void PerformInitialHandshake(string hostName, X509CertificateCollection clientCertificates, System.Net.Security.RemoteCertificateValidationCallback remoteCertificateValidationCallback, bool checkCertificateRevocation)
+        public void PerformInitialHandshake(string hostName, X509CertificateCollection clientCertificates, RemoteCertificateValidationCallback remoteCertificateValidationCallback, bool checkCertificateRevocation)
         {
             if (_connState.CipherSuite != null || _pendingConnState != null || _closed)
                 throw new InvalidOperationException("Already performed initial handshake");

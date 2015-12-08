@@ -25,17 +25,19 @@ using System;
 using System.ComponentModel;
 using System.Data;
 using System.Data.Common;
-using System.Net.Security.Reimpl;
 using System.Reflection;
 using System.Resources;
-using System.Security.Cryptography.Reimpl;
-using System.Security.Cryptography.X509Certificates.Reimpl;
-using System.Diagnostics.Contracts;
-using System.IO;
+#if CORECLR
 using System.Net.Security;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+#else
+using System.Net.Security.Reimpl;
+using System.Security.Cryptography.Reimpl;
+using System.Security.Cryptography.X509Certificates.Reimpl;
+#endif
+using System.Diagnostics.Contracts;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using AsyncRewriter;

@@ -10,14 +10,18 @@ namespace Npgsql
 {
     internal class NoParallelInvocationsGuard
     {
+#if !CORECLR
         private string StackTrace;
+#endif
         private int busy;
         public object Data { get; private set; }
         private void Start(object data = null)
         {
             if (Interlocked.Increment(ref busy) != 1)
                 System.Diagnostics.Debugger.Break();
+#if !CORECLR
             StackTrace = new StackTrace().ToString();
+#endif
             this.Data = data;
 
         }

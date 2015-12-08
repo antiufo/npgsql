@@ -26,7 +26,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+#if CORECLR
+using System.Security.Cryptography;
+#else
 using System.Security.Cryptography.Reimpl;
+#endif
 
 namespace TlsClientStream
 {

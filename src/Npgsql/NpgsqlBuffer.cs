@@ -27,6 +27,8 @@ using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using AsyncRewriter;
 using System.Net.Sockets;
 
@@ -125,7 +127,7 @@ namespace Npgsql
         }
         internal Task EnsureAsync(int count)
         {
-            return EnsureInternalAsync(count, false);
+            return EnsureInternalAsync(count, false, CancellationToken.None);
         }
 
         [RewriteAsync]
@@ -658,11 +660,13 @@ namespace Npgsql
                     var networkStream = Underlying as NetworkStream;
                     if (networkStream == null)
                     {
-                        var tls = Underlying as TlsClientStream.TlsClientStream;
+#if !CORECLR
+                        var tls = Underlying as global::TlsClientStream.TlsClientStream;
                         if (tls != null)
                         {
                             networkStream = tls.BaseStream as NetworkStream;
                         }
+#endif
                     }
                     if (networkStream == null) return true;
                     var dummy = networkStream.DataAvailable;

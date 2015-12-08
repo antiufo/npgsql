@@ -46,6 +46,9 @@
   },
   "frameworks": {
     "net45": {
+      "dependencies": {
+        "Shaman.SystemReimpl": "1.0.0-beta-2553"
+      },
       "frameworkAssemblies": {
         "System.Collections": { "version": "4.0.0.0", "type": "build" },
         "System.Diagnostics.Contracts": { "version": "4.0.0.0", "type": "build" },
@@ -57,6 +60,9 @@
       }
     },
     "net452": {
+      "dependencies": {
+        "Shaman.SystemReimpl": "1.0.0-beta-2553"
+      },
       "frameworkAssemblies": {
         "System.Collections": { "version": "4.0.0.0", "type": "build" },
         "System.Diagnostics.Contracts": { "version": "4.0.0.0", "type": "build" },
@@ -68,6 +74,9 @@
       }
     },
     "dnx452": {
+      "dependencies": {
+        "Shaman.SystemReimpl": "1.0.0-beta-2553"
+      },
       "frameworkAssemblies": {
         "System.Collections": "4.0.0.0",
         "System.Diagnostics.Contracts": "4.0.0.0",
@@ -79,6 +88,11 @@
       }
     },
     "dnxcore50": {
+      "compilationOptions": {
+        "define": [
+          "CORECLR"
+        ]
+      },
       "dependencies": {
         "System.Collections.Concurrent": "4.0.11-*",
         "System.Console": "4.0.0-*",
@@ -87,6 +101,7 @@
         "System.Data.Common": "4.0.1-*",
         "System.Diagnostics.Contracts": "4.0.1-*",
         "System.Diagnostics.Tools": "4.0.1-*",
+        "System.Diagnostics.StackTrace": "4.0.1-*",
         "System.Globalization": "4.0.11-*",
         "System.Globalization.Extensions": "4.0.1-*",
         "System.Linq": "4.0.1-*",
