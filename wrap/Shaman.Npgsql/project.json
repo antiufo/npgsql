@@ -1,5 +1,5 @@
 {
-  "version": "3.0.0-beta-6362",
+  "version": "3.0.0-beta-6364",
   "frameworks": {
     "net45": {
       "wrappedProject": "../../src/Npgsql/Npgsql.csproj",
