@@ -1,6 +1,30 @@
-﻿using System;
+﻿#region License
+// The PostgreSQL License
+//
+// Copyright (C) 2015 The Npgsql Development Team
+//
+// Permission to use, copy, modify, and distribute this software and its
+// documentation for any purpose, without fee, and without a written
+// agreement is hereby granted, provided that the above copyright notice
+// and this paragraph and the following two paragraphs appear in all copies.
+//
+// IN NO EVENT SHALL THE NPGSQL DEVELOPMENT TEAM BE LIABLE TO ANY PARTY
+// FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+// INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+// DOCUMENTATION, EVEN IF THE NPGSQL DEVELOPMENT TEAM HAS BEEN ADVISED OF
+// THE POSSIBILITY OF SUCH DAMAGE.
+//
+// THE NPGSQL DEVELOPMENT TEAM SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
+// ON AN "AS IS" BASIS, AND THE NPGSQL DEVELOPMENT TEAM HAS NO OBLIGATIONS
+// TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#endregion
+
+using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.SqlClient;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -110,15 +134,10 @@ namespace Npgsql.Tests.Types
         {
             var expected = new TimeSpan(0, 10, 45, 34, 500);
 
-            using (var cmd = new NpgsqlCommand("SELECT @p1, @p2, @p3", Conn))
+            using (var cmd = new NpgsqlCommand("SELECT @p1, @p2", Conn))
             {
-                var p1 = new NpgsqlParameter("p1", NpgsqlDbType.Time);
-                var p2 = new NpgsqlParameter("p2", DbType.Time);
-                var p3 = new NpgsqlParameter("p3", expected);
-                cmd.Parameters.Add(p1);
-                cmd.Parameters.Add(p2);
-                cmd.Parameters.Add(p3);
-                p1.Value = p2.Value = expected;
+                cmd.Parameters.Add(new NpgsqlParameter("p1", NpgsqlDbType.Time) { Value = expected });
+                cmd.Parameters.Add(new NpgsqlParameter("p2", DbType.Time) { Value = expected });
                 using (var reader = cmd.ExecuteReader())
                 {
                     reader.Read();
@@ -299,7 +318,7 @@ namespace Npgsql.Tests.Types
             if (tzOffset == TimeSpan.Zero)
                 TestUtil.IgnoreExceptOnBuildServer("Test cannot run when machine timezone is UTC");
 
-            var dateTimeUtc = new DateTime(2015, 1, 27, 8, 45, 12, 345, DateTimeKind.Utc);
+            var dateTimeUtc = new DateTime(2015, 6, 27, 8, 45, 12, 345, DateTimeKind.Utc);
             var dateTimeLocal = dateTimeUtc.ToLocalTime();
             var dateTimeUnspecified = new DateTime(dateTimeUtc.Ticks, DateTimeKind.Unspecified);
 
@@ -307,7 +326,7 @@ namespace Npgsql.Tests.Types
             var nDateTimeLocal = nDateTimeUtc.ToLocalTime();
             var nDateTimeUnspecified = new NpgsqlDateTime(nDateTimeUtc.Ticks, DateTimeKind.Unspecified);
 
-            var dateTimeOffset = new DateTimeOffset(dateTimeLocal, tzOffset);
+            var dateTimeOffset = new DateTimeOffset(dateTimeLocal, dateTimeLocal - dateTimeUtc);
 
             using (var cmd = new NpgsqlCommand("SELECT @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9", Conn))
             {
@@ -318,8 +337,11 @@ namespace Npgsql.Tests.Types
                 cmd.Parameters.AddWithValue("p5", NpgsqlDbType.TimestampTZ, nDateTimeLocal);
                 cmd.Parameters.AddWithValue("p6", NpgsqlDbType.TimestampTZ, nDateTimeUnspecified);
                 cmd.Parameters.AddWithValue("p7", dateTimeUtc);
+                Assert.That(cmd.Parameters["p7"].NpgsqlDbType, Is.EqualTo(NpgsqlDbType.TimestampTZ));
                 cmd.Parameters.AddWithValue("p8", nDateTimeUtc);
+                Assert.That(cmd.Parameters["p8"].NpgsqlDbType, Is.EqualTo(NpgsqlDbType.TimestampTZ));
                 cmd.Parameters.AddWithValue("p9", dateTimeOffset);
+                Assert.That(cmd.Parameters["p9"].NpgsqlDbType, Is.EqualTo(NpgsqlDbType.TimestampTZ));
 
                 using (var reader = cmd.ExecuteReader())
                 {
@@ -345,6 +367,10 @@ namespace Npgsql.Tests.Types
                     }
                 }
             }
+
+            Assert.AreEqual(nDateTimeUtc, nDateTimeLocal.ToUniversalTime());
+            Assert.AreEqual(nDateTimeUtc, new NpgsqlDateTime(nDateTimeLocal.Ticks, DateTimeKind.Unspecified).ToUniversalTime());
+            Assert.AreEqual(nDateTimeLocal, nDateTimeUnspecified.ToLocalTime());
         }
 
         #endregion
@@ -357,14 +383,18 @@ namespace Npgsql.Tests.Types
             var expectedNpgsqlInterval = new NpgsqlTimeSpan(1, 2, 3, 4, 5);
             var expectedTimeSpan = new TimeSpan(1, 2, 3, 4, 5);
 
-            using (var cmd = new NpgsqlCommand("SELECT @p1, @p2", Conn))
+            using (var cmd = new NpgsqlCommand("SELECT @p1, @p2, @p3", Conn))
             {
                 var p1 = new NpgsqlParameter("p1", NpgsqlDbType.Interval);
-                var p2 = new NpgsqlParameter("p2", expectedNpgsqlInterval);
+                var p2 = new NpgsqlParameter("p2", expectedTimeSpan);
+                var p3 = new NpgsqlParameter("p3", expectedNpgsqlInterval);
                 Assert.That(p2.NpgsqlDbType, Is.EqualTo(NpgsqlDbType.Interval));
                 Assert.That(p2.DbType, Is.EqualTo(DbType.Object));
+                Assert.That(p3.NpgsqlDbType, Is.EqualTo(NpgsqlDbType.Interval));
+                Assert.That(p3.DbType, Is.EqualTo(DbType.Object));
                 cmd.Parameters.Add(p1);
                 cmd.Parameters.Add(p2);
+                cmd.Parameters.Add(p3);
                 p1.Value = expectedNpgsqlInterval;
 
                 using (var reader = cmd.ExecuteReader())

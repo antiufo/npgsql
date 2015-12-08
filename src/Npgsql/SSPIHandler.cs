@@ -1,4 +1,4 @@
-#if !DNXCORE50
+#if NET45 || NET452 || DNX452
 #region License
 // The PostgreSQL License
 //
@@ -34,7 +34,7 @@ namespace Npgsql
     /// </summary>
     internal class SSPIHandler : IDisposable
     {
-        #region constants and structs
+#region constants and structs
 
         private const int SECBUFFER_VERSION = 0;
         private const int SECBUFFER_TOKEN = 2;
@@ -70,9 +70,9 @@ namespace Npgsql
             public IntPtr pBuffer;
         }
 
-        #endregion
+#endregion
 
-        #region p/invoke methods
+#region p/invoke methods
 
         [DllImport("Secur32.dll")]
         private extern static int AcquireCredentialsHandle(
@@ -132,7 +132,7 @@ namespace Npgsql
             ref SecHandle phContext
         );
 
-        #endregion
+#endregion
 
         private bool disposed;
         private string sspitarget;
@@ -143,10 +143,10 @@ namespace Npgsql
         public SSPIHandler(string pghost, string krbsrvname, bool useGssapi)
         {
             if (pghost == null)
-                throw new ArgumentNullException("pghost");
+                throw new ArgumentNullException(nameof(pghost));
             if (krbsrvname == null)
                 krbsrvname = String.Empty;
-            sspitarget = String.Format("{0}/{1}", krbsrvname, pghost);
+            sspitarget = $"{krbsrvname}/{pghost}";
 
             SecHandle expire;
             int status = AcquireCredentialsHandle(
@@ -294,7 +294,7 @@ namespace Npgsql
             }
         }
 
-        #region resource cleanup
+#region resource cleanup
 
         private void FreeHandles()
         {
@@ -328,7 +328,7 @@ namespace Npgsql
             }
         }
 
-        #endregion
+#endregion
     }
 }
 #endif

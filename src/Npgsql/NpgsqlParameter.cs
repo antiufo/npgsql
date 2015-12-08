@@ -27,6 +27,7 @@ using System.Data;
 using System.Data.Common;
 using System.Diagnostics.Contracts;
 using System.Reflection;
+using JetBrains.Annotations;
 using NpgsqlTypes;
 
 #if WITHDESIGN
@@ -41,7 +42,7 @@ namespace Npgsql
 #if WITHDESIGN
     [TypeConverter(typeof(NpgsqlParameterConverter))]
 #endif
-#if DNXCORE50
+#if DNXCORE50 || DOTNET
     public sealed class NpgsqlParameter : DbParameter
 #else
     public sealed class NpgsqlParameter : DbParameter, ICloneable
@@ -57,7 +58,7 @@ namespace Npgsql
         // Fields to implement IDataParameter
         NpgsqlDbType? _npgsqlDbType;
         DbType? _dbType;
-        Type _enumType;
+        Type _specificType;
         string _name = String.Empty;
         object _value;
         object _npgsqlValue;
@@ -70,9 +71,10 @@ namespace Npgsql
         NpgsqlParameterCollection _collection;
         internal LengthCache LengthCache { get; private set; }
 
-        internal bool IsBound { get; private set; }
         internal TypeHandler Handler { get; private set; }
         internal FormatCode FormatCode { get; private set; }
+
+        internal bool AutoAssignedName;
 
         #endregion
 
@@ -85,7 +87,7 @@ namespace Npgsql
         {
             SourceColumn = String.Empty;
             Direction = ParameterDirection.Input;
-#if !DNXCORE50
+#if NET45 || NET452 || DNX452
             SourceVersion = DataRowVersion.Current;
 #endif
         }
@@ -185,7 +187,7 @@ namespace Npgsql
             SourceColumn = sourceColumn;
         }
 
-#if !DNXCORE50
+#if NET45 || NET452 || DNX452
         /// <summary>
         /// Initializes a new instance of the <see cref="NpgsqlParameter">NpgsqlParameter</see>.
         /// </summary>
@@ -264,7 +266,7 @@ namespace Npgsql
         /// </summary>
         /// <value>An <see cref="System.Object">Object</see> that is the value of the parameter.
         /// The default value is null.</value>
-#if !DNXCORE50
+#if NET45 || NET452 || DNX452
         [TypeConverter(typeof(StringConverter)), Category("Data")]
 #endif
         public override object Value
@@ -272,7 +274,7 @@ namespace Npgsql
             get
             {
                 return _value;
-            } // [TODO] Check and validate data type.
+            }
             set
             {
                 ClearBind();
@@ -287,9 +289,7 @@ namespace Npgsql
         /// </summary>
         /// <value>An <see cref="System.Object">Object</see> that is the value of the parameter.
         /// The default value is null.</value>
-#if !DNXCORE50
         [Category("Data")]
-#endif
         [TypeConverter(typeof(StringConverter))]
         public object NpgsqlValue
         {
@@ -314,9 +314,7 @@ namespace Npgsql
         /// <value>One of the <see cref="System.Data.ParameterDirection">ParameterDirection</see>
         /// values. The default is <b>Input</b>.</value>
         [DefaultValue(ParameterDirection.Input)]
-#if !DNXCORE50
         [Category("Data")]
-#endif
         public override ParameterDirection Direction { get; set; }
 
         // Implementation of IDbDataParameter
@@ -329,10 +327,12 @@ namespace Npgsql
         /// The default value is 0, which indicates that the data provider
         /// sets the precision for <b>Value</b>.</value>
         [DefaultValue((Byte)0)]
-#if !DNXCORE50
         [Category("Data")]
-#endif
+#if NET45
         public byte Precision
+#else
+        public override byte Precision
+#endif
         {
             get { return _precision; }
             set
@@ -349,10 +349,12 @@ namespace Npgsql
         /// <value>The number of decimal places to which
         /// <see cref="NpgsqlParameter.Value">Value</see> is resolved. The default is 0.</value>
         [DefaultValue((Byte)0)]
-#if !DNXCORE50
         [Category("Data")]
-#endif
+#if NET45
         public byte Scale
+#else
+        public override byte Scale
+#endif
         {
             get { return _scale; }
             set
@@ -368,16 +370,15 @@ namespace Npgsql
         /// <value>The maximum size, in bytes, of the data within the column.
         /// The default value is inferred from the parameter value.</value>
         [DefaultValue(0)]
-#if !DNXCORE50
         [Category("Data")]
-#endif
         public override int Size
         {
             get { return _size; }
             set
             {
                 if (value < -1)
-                    throw new ArgumentException(String.Format("Invalid parameter Size value '{0}'. The value must be greater than or equal to 0.", value));
+                    throw new ArgumentException(
+                        $"Invalid parameter Size value '{value}'. The value must be greater than or equal to 0.");
                 Contract.EndContractBlock();
 
                 _size = value;
@@ -390,9 +391,7 @@ namespace Npgsql
         /// </summary>
         /// <value>One of the <see cref="System.Data.DbType">DbType</see> values. The default is <b>Object</b>.</value>
         [DefaultValue(DbType.Object)]
-#if !DNXCORE50
         [Category("Data"), RefreshProperties(RefreshProperties.All)]
-#endif
         public override DbType DbType
         {
             get
@@ -410,8 +409,16 @@ namespace Npgsql
             set
             {
                 ClearBind();
-                _dbType = value;
-                _npgsqlDbType = TypeHandlerRegistry.ToNpgsqlDbType(value);
+                if (value == DbType.Object)
+                {
+                    _dbType = null;
+                    _npgsqlDbType = null;
+                }
+                else
+                {
+                    _dbType = value;
+                    _npgsqlDbType = TypeHandlerRegistry.ToNpgsqlDbType(value);
+                }
             }
         }
 
@@ -420,9 +427,7 @@ namespace Npgsql
         /// </summary>
         /// <value>One of the <see cref="NpgsqlTypes.NpgsqlDbType">NpgsqlDbType</see> values. The default is <b>Unknown</b>.</value>
         [DefaultValue(NpgsqlDbType.Unknown)]
-#if !DNXCORE50
         [Category("Data"), RefreshProperties(RefreshProperties.All)]
-#endif
         public NpgsqlDbType NpgsqlDbType
         {
             get
@@ -432,7 +437,7 @@ namespace Npgsql
                 }
 
                 if (_value != null) {   // Infer from value
-                    return TypeHandlerRegistry.ToNpgsqlDbType(_value.GetType());
+                    return TypeHandlerRegistry.ToNpgsqlDbType(_value);
                 }
 
                 return NpgsqlDbType.Unknown;
@@ -440,10 +445,10 @@ namespace Npgsql
             set
             {
                 if (value == NpgsqlDbType.Array) {
-                    throw new ArgumentOutOfRangeException("value", "Cannot set NpgsqlDbType to just Array, Binary-Or with the element type (e.g. Array of Box is NpgsqlDbType.Array | NpgsqlDbType.Box).");
+                    throw new ArgumentOutOfRangeException(nameof(value), "Cannot set NpgsqlDbType to just Array, Binary-Or with the element type (e.g. Array of Box is NpgsqlDbType.Array | NpgsqlDbType.Box).");
                 }
                 if (value == NpgsqlDbType.Range) {
-                    throw new ArgumentOutOfRangeException("value", "Cannot set NpgsqlDbType to just Range, Binary-Or with the element type (e.g. Range of integer is NpgsqlDbType.Range | NpgsqlDbType.Integer)");
+                    throw new ArgumentOutOfRangeException(nameof(value), "Cannot set NpgsqlDbType to just Range, Binary-Or with the element type (e.g. Range of integer is NpgsqlDbType.Range | NpgsqlDbType.Integer)");
                 }
                 Contract.EndContractBlock();
 
@@ -478,6 +483,7 @@ namespace Npgsql
                     _collection.InvalidateHashLookups();
                     ClearBind();
                 }
+                AutoAssignedName = false;
             }
         }
 
@@ -489,12 +495,10 @@ namespace Npgsql
         /// <value>The name of the source column that is mapped to the
         /// <see cref="System.Data.DataSet">DataSet</see>. The default is an empty string.</value>
         [DefaultValue("")]
-#if !DNXCORE50
         [Category("Data")]
-#endif
         public override String SourceColumn { get; set; }
 
-#if !DNXCORE50
+#if NET45 || NET452 || DNX452
         /// <summary>
         /// Gets or sets the <see cref="System.Data.DataRowVersion">DataRowVersion</see>
         /// to use when loading <see cref="NpgsqlParameter.Value">Value</see>.
@@ -514,12 +518,24 @@ namespace Npgsql
         /// Used in combination with NpgsqlDbType.Enum or NpgsqlDbType.Array | NpgsqlDbType.Enum to indicate the enum type.
         /// For other NpgsqlDbTypes, this field is not used.
         /// </summary>
+        [Obsolete("Use the SpecificType property instead")]
+        [PublicAPI]
         public Type EnumType
         {
-            get
-            {
-                if (_enumType != null)
-                    return _enumType;
+            get { return SpecificType; }
+            set { SpecificType = value; }
+        }
+
+        /// <summary>
+        /// Used in combination with NpgsqlDbType.Enum or NpgsqlDbType.Composite to indicate the specific enum or composite type.
+        /// For other NpgsqlDbTypes, this field is not used.
+        /// </summary>
+        [PublicAPI]
+        public Type SpecificType
+        {
+            get {
+                if (_specificType != null)
+                    return _specificType;
 
                 // Try to infer type if NpgsqlDbType is Enum or has not been set
                 if ((!_npgsqlDbType.HasValue || _npgsqlDbType == NpgsqlDbType.Enum) && _value != null)
@@ -532,15 +548,7 @@ namespace Npgsql
                 }
                 return null;
             }
-            set
-            {
-                if (value != null)
-                {
-                    if (!value.GetTypeInfo().IsEnum)
-                        throw new ArgumentException("The type is not an enum type", "value");
-                    _enumType = value;
-                }
-            }
+            set { _specificType = value; }
         }
 
         /// <summary>
@@ -569,9 +577,9 @@ namespace Npgsql
             get
             {
                 string name = ParameterName;
-                if (name[0] == ':' || name[0] == '@')
+                if (name.Length > 0 && (name[0] == ':' || name[0] == '@'))
                 {
-                    return name.Length > 1 ? name.Substring(1) : string.Empty;
+                    return name.Substring(1);
                 }
                 return name;
 
@@ -582,10 +590,7 @@ namespace Npgsql
         /// Returns whether this parameter has had its type set explicitly via DbType or NpgsqlDbType
         /// (and not via type inference)
         /// </summary>
-        internal bool IsTypeExplicitlySet
-        {
-            get { return _npgsqlDbType.HasValue || _dbType.HasValue; }
-        }
+        internal bool IsTypeExplicitlySet => _npgsqlDbType.HasValue || _dbType.HasValue;
 
         internal void ResolveHandler(TypeHandlerRegistry registry)
         {
@@ -595,7 +600,7 @@ namespace Npgsql
 
             if (_npgsqlDbType.HasValue)
             {
-                Handler = registry[_npgsqlDbType.Value, EnumType];
+                Handler = registry[_npgsqlDbType.Value, SpecificType];
             }
             else if (_dbType.HasValue)
             {
@@ -607,7 +612,7 @@ namespace Npgsql
             }
             else
             {
-                throw new InvalidOperationException(string.Format("Parameter '{0}' must have its value set", ParameterName));
+                throw new InvalidOperationException($"Parameter '{ParameterName}' must have its value set");
             }
         }
 
@@ -617,14 +622,12 @@ namespace Npgsql
 
             Contract.Assert(Handler != null);
             FormatCode = Handler.PreferTextWrite ? FormatCode.Text : FormatCode.Binary;
-
-            IsBound = true;
         }
 
         internal int ValidateAndGetLength()
         {
             if (_value == null) {
-                throw new InvalidCastException(string.Format("Parameter {0} must be set", ParameterName));
+                throw new InvalidCastException($"Parameter {ParameterName} must be set");
             }
 
             if (_value is DBNull) {
@@ -632,13 +635,14 @@ namespace Npgsql
             }
 
             // No length caching for simple types
-            var asSimpleWriter = Handler as ISimpleTypeWriter;
+            var asSimpleWriter = Handler as ISimpleTypeHandler;
             if (asSimpleWriter != null) {
                 return asSimpleWriter.ValidateAndGetLength(Value, this);
             }
 
-            var asChunkingWriter = Handler as IChunkingTypeWriter;
-            Contract.Assert(asChunkingWriter != null, String.Format("Handler {0} doesn't implement either ISimpleTypeWriter or IChunkingTypeWriter", Handler.GetType().Name));
+            var asChunkingWriter = Handler as IChunkingTypeHandler;
+            Contract.Assert(asChunkingWriter != null,
+                $"Handler {Handler.GetType().Name} doesn't implement either ISimpleTypeWriter or IChunkingTypeWriter");
             var lengthCache = LengthCache;
             var len = asChunkingWriter.ValidateAndGetLength(Value, ref lengthCache, this);
             LengthCache = lengthCache;
@@ -647,7 +651,6 @@ namespace Npgsql
 
         void ClearBind()
         {
-            IsBound = false;
             Handler = null;
         }
 
@@ -663,15 +666,9 @@ namespace Npgsql
             ClearBind();
         }
 
-        internal bool IsInputDirection
-        {
-            get { return Direction == ParameterDirection.InputOutput || Direction == ParameterDirection.Input; }
-        }
+        internal bool IsInputDirection => Direction == ParameterDirection.InputOutput || Direction == ParameterDirection.Input;
 
-        internal bool IsOutputDirection
-        {
-            get { return Direction == ParameterDirection.InputOutput || Direction == ParameterDirection.Output; }
-        }
+        internal bool IsOutputDirection => Direction == ParameterDirection.InputOutput || Direction == ParameterDirection.Output;
 
         #endregion
 
@@ -686,28 +683,30 @@ namespace Npgsql
         {
             // use fields instead of properties
             // to avoid auto-initializing something like type_info
-            var clone = new NpgsqlParameter();
-            clone._precision = _precision;
-            clone._scale = _scale;
-            clone._size = _size;
-            clone._dbType = _dbType;
-            clone._npgsqlDbType = _npgsqlDbType;
-            clone._enumType = _enumType;
-            clone.Direction = Direction;
-            clone.IsNullable = IsNullable;
-            clone._name = _name;
-            clone.SourceColumn = SourceColumn;
-#if !DNXCORE50
-            clone.SourceVersion = SourceVersion;
+            var clone = new NpgsqlParameter
+            {
+                _precision = _precision,
+                _scale = _scale,
+                _size = _size,
+                _dbType = _dbType,
+                _npgsqlDbType = _npgsqlDbType,
+                _specificType = _specificType,
+                Direction = Direction,
+                IsNullable = IsNullable,
+                _name = _name,
+                SourceColumn = SourceColumn,
+#if NET45 || NET452 || DNX452
+                SourceVersion = SourceVersion,
 #endif
-            clone._value = _value;
-            clone._npgsqlValue = _npgsqlValue;
-            clone.SourceColumnNullMapping = SourceColumnNullMapping;
-
+                _value = _value,
+                _npgsqlValue = _npgsqlValue,
+                SourceColumnNullMapping = SourceColumnNullMapping,
+                AutoAssignedName = AutoAssignedName
+            };
             return clone;
         }
 
-#if !DNXCORE50
+#if NET45 || NET452 || DNX452
         object ICloneable.Clone()
         {
             return Clone();

@@ -1,9 +1,7 @@
-﻿// EntityFrameworkMigrationTests.cs
+﻿#region License
+// The PostgreSQL License
 //
-// Author:
-//    David Karlaš (david.karlas@gmail.com)
-//
-//    Copyright (C) 2014 David Karlaš
+// Copyright (C) 2015 The Npgsql Development Team
 //
 // Permission to use, copy, modify, and distribute this software and its
 // documentation for any purpose, without fee, and without a written
@@ -21,6 +19,7 @@
 // AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
 // ON AN "AS IS" BASIS, AND THE NPGSQL DEVELOPMENT TEAM HAS NO OBLIGATIONS
 // TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#endregion
 
 using Npgsql;
 using NUnit.Framework;
@@ -471,6 +470,23 @@ namespace EntityFramework6.Npgsql.Tests
             var statments = new NpgsqlMigrationSqlGenerator().Generate(operations, BackendVersion.ToString());
             Assert.AreEqual(1, statments.Count());
             Assert.AreEqual("CREATE UNIQUE INDEX \"someTable_someIndex\" ON \"someTable\" (\"column1\",\"column2\",\"column3\")", statments.ElementAt(0).Sql);
+        }
+
+        [Test]
+        public void TestRenameIndexOperation()
+        {
+            var operations = new List<MigrationOperation>();
+            operations.Add(new RenameIndexOperation("someSchema.someTable", "someOldIndexName", "someNewIndexName"));
+            var statements = new NpgsqlMigrationSqlGenerator().Generate(operations, BackendVersion.ToString());
+            Assert.AreEqual(1, statements.Count());
+            if (BackendVersion.Major > 9 || (BackendVersion.Major == 9 && BackendVersion.Minor >= 2))
+            {
+                Assert.AreEqual("ALTER INDEX IF EXISTS someSchema.\"someOldIndexName\" RENAME TO \"someNewIndexName\"", statements.ElementAt(0).Sql);
+            }
+            else
+            {
+                Assert.AreEqual("ALTER INDEX someSchema.\"someOldIndexName\" RENAME TO \"someNewIndexName\"", statements.ElementAt(0).Sql);    
+            }
         }
 
         [Test]

@@ -129,4 +129,72 @@ namespace Npgsql
         Other
 #pragma warning restore 1591
     }
+
+    /// <summary>
+    /// The way how to order bytes.
+    /// </summary>
+    enum ByteOrder
+    {
+        // ReSharper disable once InconsistentNaming
+        /// <summary>
+        /// Most significant byte first (XDR)
+        /// </summary>
+        MSB = 0,
+        // ReSharper disable once InconsistentNaming
+        /// <summary>
+        /// Less significant byte first (NDR)
+        /// </summary>
+        LSB = 1
+    }
+
+    #region Component model attributes missing from CoreCLR
+
+#if DNXCORE50 || DOTNET
+    [AttributeUsage(AttributeTargets.Property)]
+    class DisplayNameAttribute : Attribute
+    {
+        internal string DisplayName { get; private set; }
+
+        internal DisplayNameAttribute(string displayName)
+        {
+            DisplayName = displayName;
+        }
+    }
+
+    [AttributeUsage(AttributeTargets.Property)]
+    class CategoryAttribute : Attribute
+    {
+        internal CategoryAttribute(string category) {}
+    }
+
+    [AttributeUsage(AttributeTargets.Property)]
+    class DescriptionAttribute : Attribute
+    {
+        internal DescriptionAttribute(string description) {}
+    }
+
+    [AttributeUsage(AttributeTargets.Property)]
+    sealed class BrowsableAttribute : Attribute
+    {
+        public BrowsableAttribute(bool browsable) {}
+    }
+
+    [AttributeUsage(AttributeTargets.Property)]
+    sealed class PasswordPropertyTextAttribute : Attribute
+    {
+        public PasswordPropertyTextAttribute(bool password) {}
+    }
+
+    enum RefreshProperties {
+        All
+    }
+
+    [AttributeUsage(AttributeTargets.Property)]
+    sealed class RefreshPropertiesAttribute : Attribute
+    {
+        public RefreshPropertiesAttribute(RefreshProperties refreshProperties) {}
+    }
+#endif
+
+    #endregion
 }

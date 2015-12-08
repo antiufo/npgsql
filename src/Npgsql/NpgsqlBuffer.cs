@@ -22,15 +22,11 @@
 #endregion
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using AsyncRewriter;
 using System.Net.Sockets;
 
@@ -41,18 +37,38 @@ namespace Npgsql
         #region Fields and Properties
 
         internal Stream Underlying { get; set; }
-        internal int Size { get; private set; }
-        internal Encoding TextEncoding { get; private set; }
+        /// <summary>
+        /// The total byte length of the buffer.
+        /// </summary>
+        internal int Size { get; }
+
+        /// <summary>
+        /// During copy operations, the buffer's usable size is smaller than its total size because of the CopyData
+        /// message header. This distinction is important since some type handlers check how much space is left
+        /// in the buffer in their decision making.
+        /// </summary>
+        internal int UsableSize
+        {
+            get { return _usableSize; }
+            set
+            {
+                Contract.Requires(value <= Size);
+                _usableSize = value;
+            }
+        }
+
+        int _usableSize;
+        internal Encoding TextEncoding { get; }
 
         internal int ReadPosition { get; private set; }
-        internal int ReadBytesLeft { get { return _filledBytes - ReadPosition; } }
+        internal int ReadBytesLeft => _filledBytes - ReadPosition;
 
         internal int WritePosition { get { return _writePosition; } set { _writePosition = value; } }
-        internal int WriteSpaceLeft { get { return Size - _writePosition; } }
+        internal int WriteSpaceLeft => Size - _writePosition;
 
         internal long TotalBytesFlushed { get; private set; }
 
-        internal byte[] _buf;
+        internal readonly byte[] _buf;
         int _filledBytes;
         readonly Decoder _textDecoder;
         readonly Encoder _textEncoder;
@@ -66,7 +82,7 @@ namespace Npgsql
         /// </summary>
         readonly char[] _tempCharBuf;
 
-        BitConverterUnion _bitConverterUnion = new BitConverterUnion();
+        BitConverterUnion _bitConverterUnion;
 
         /// <summary>
         /// The minimum buffer size possible.
@@ -78,18 +94,16 @@ namespace Npgsql
 
         #region Constructors
 
-        internal NpgsqlBuffer(Stream underlying)
-            : this(underlying, DefaultBufferSize, PGUtil.UTF8Encoding) {}
-
         internal NpgsqlBuffer(Stream underlying, int size, Encoding textEncoding)
         {
             if (size < MinimumBufferSize) {
-                throw new ArgumentOutOfRangeException("size", size, "Buffer size must be at least " + MinimumBufferSize);
+                throw new ArgumentOutOfRangeException(nameof(size), size, "Buffer size must be at least " + MinimumBufferSize);
             }
             Contract.EndContractBlock();
 
             Underlying = underlying;
             Size = size;
+            UsableSize = Size;
             _buf = new byte[Size];
             TextEncoding = textEncoding;
             _textDecoder = TextEncoding.GetDecoder();
@@ -469,6 +483,17 @@ namespace Npgsql
             _writePosition = pos;
         }
 
+        internal void WriteUInt32(uint i)
+        {
+            Contract.Requires(WriteSpaceLeft >= sizeof(uint));
+            var pos = _writePosition;
+            _buf[pos++] = (byte)(i >> 24);
+            _buf[pos++] = (byte)(i >> 16);
+            _buf[pos++] = (byte)(i >> 8);
+            _buf[pos++] = (byte)i;
+            _writePosition = pos;
+        }
+
         public void WriteInt64(long i)
         {
             Contract.Requires(WriteSpaceLeft >= sizeof(long));
@@ -598,7 +623,7 @@ namespace Npgsql
                 case SeekOrigin.End:
                     throw new NotImplementedException();
                 default:
-                    throw new ArgumentOutOfRangeException("origin");
+                    throw new ArgumentOutOfRangeException(nameof(origin));
             }
             Contract.Assert(absoluteOffset >= 0 && absoluteOffset <= _filledBytes);
 
@@ -671,6 +696,73 @@ namespace Npgsql
             [FieldOffset(0)] public double float8;
         }
 
+        #endregion
+
+        #region Postgis
+
+        internal int ReadInt32(ByteOrder bo)
+        {
+            Contract.Requires(ReadBytesLeft >= sizeof(int));
+            int result;
+            if (BitConverter.IsLittleEndian == (bo == ByteOrder.LSB))
+            {
+                result = BitConverter.ToInt32(_buf, ReadPosition);
+                ReadPosition += 4;
+            }
+            else
+            {
+                _workspace[3] = _buf[ReadPosition++];
+                _workspace[2] = _buf[ReadPosition++];
+                _workspace[1] = _buf[ReadPosition++];
+                _workspace[0] = _buf[ReadPosition++];
+                result = BitConverter.ToInt32(_workspace, 0);
+            }
+            return result;
+        }
+
+        internal uint ReadUInt32(ByteOrder bo)
+        {
+            Contract.Requires(ReadBytesLeft >= sizeof(int));
+            uint result;
+            if (BitConverter.IsLittleEndian == (bo == ByteOrder.LSB))
+            {
+                result = BitConverter.ToUInt32(_buf, ReadPosition);
+                ReadPosition += 4;
+            }
+            else
+            {
+                _workspace[3] = _buf[ReadPosition++];
+                _workspace[2] = _buf[ReadPosition++];
+                _workspace[1] = _buf[ReadPosition++];
+                _workspace[0] = _buf[ReadPosition++];
+                result = BitConverter.ToUInt32(_workspace, 0);
+            }
+            return result;
+        }
+
+        internal double ReadDouble(ByteOrder bo)
+        {
+            Contract.Requires(ReadBytesLeft >= sizeof(double));
+
+            if (BitConverter.IsLittleEndian == (ByteOrder.LSB == bo))
+            {
+                var result = BitConverter.ToDouble(_buf, ReadPosition);
+                ReadPosition += 8;
+                return result;
+            }
+            else
+            {
+                _workspace[7] = _buf[ReadPosition++];
+                _workspace[6] = _buf[ReadPosition++];
+                _workspace[5] = _buf[ReadPosition++];
+                _workspace[4] = _buf[ReadPosition++];
+                _workspace[3] = _buf[ReadPosition++];
+                _workspace[2] = _buf[ReadPosition++];
+                _workspace[1] = _buf[ReadPosition++];
+                _workspace[0] = _buf[ReadPosition++];
+                return BitConverter.ToDouble(_workspace, 0);
+            }
+        }
         #endregion
     }
 }

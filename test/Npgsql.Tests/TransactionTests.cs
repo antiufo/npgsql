@@ -1,4 +1,27 @@
-﻿using System;
+﻿#region License
+// The PostgreSQL License
+//
+// Copyright (C) 2015 The Npgsql Development Team
+//
+// Permission to use, copy, modify, and distribute this software and its
+// documentation for any purpose, without fee, and without a written
+// agreement is hereby granted, provided that the above copyright notice
+// and this paragraph and the following two paragraphs appear in all copies.
+//
+// IN NO EVENT SHALL THE NPGSQL DEVELOPMENT TEAM BE LIABLE TO ANY PARTY
+// FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+// INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+// DOCUMENTATION, EVEN IF THE NPGSQL DEVELOPMENT TEAM HAS BEEN ADVISED OF
+// THE POSSIBILITY OF SUCH DAMAGE.
+//
+// THE NPGSQL DEVELOPMENT TEAM SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
+// ON AN "AS IS" BASIS, AND THE NPGSQL DEVELOPMENT TEAM HAS NO OBLIGATIONS
+// TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#endregion
+
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
@@ -170,16 +193,39 @@ namespace Npgsql.Tests
         public void FailedTransactionCantRollbackToSavepointWithCustomTimeout()
         {
             var transaction = Conn.BeginTransaction();
-            transaction.CreateSavepoint("TestSavePoint");
+            transaction.Save("TestSavePoint");
 
             using (var command = new NpgsqlCommand("SELECT unknown_thing", Conn)) {
                 command.CommandTimeout = 1;
                 try {
                     command.ExecuteScalar();
                 } catch (NpgsqlException) {
-                    transaction.RollbackToSavepoint("TestSavePoint");
+                    transaction.Rollback("TestSavePoint");
                     Assert.That(ExecuteScalar("SELECT 1"), Is.EqualTo(1));
                 }
+            }
+        }
+
+        [Test, Description("Closes a (pooled) connection with a failed transaction and a custom timeout")]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/719")]
+        public void FailedTransactionOnCloseWithCustom()
+        {
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString) { Pooling = true };
+            using (var conn = new NpgsqlConnection(csb))
+            {
+                conn.Open();
+                var backendProcessId = conn.ProcessID;
+                conn.BeginTransaction();
+                using (var badCmd = new NpgsqlCommand("SEL", conn))
+                {
+                    badCmd.CommandTimeout = NpgsqlCommand.DefaultTimeout + 1;
+                    Assert.That(() => badCmd.ExecuteNonQuery(), Throws.Exception.TypeOf<NpgsqlException>());
+                }
+                // Connection now in failed transaction state, and a custom timeout is in place
+                conn.Close();
+                conn.Open();
+                Assert.That(conn.ProcessID, Is.EqualTo(backendProcessId));
+                Assert.That(ExecuteScalar("SELECT 1", conn), Is.EqualTo(1));
             }
         }
 
@@ -207,14 +253,14 @@ namespace Npgsql.Tests
 
             using (var tx = Conn.BeginTransaction())
             {
-                tx.CreateSavepoint(name);
+                tx.Save(name);
 
                 ExecuteNonQuery("INSERT INTO data (name) VALUES ('savepointtest')", tx: tx);
                 Assert.That(ExecuteScalar("SELECT COUNT(*) FROM data", tx: tx), Is.EqualTo(1));
-                tx.RollbackToSavepoint(name);
+                tx.Rollback(name);
                 Assert.That(ExecuteScalar("SELECT COUNT(*) FROM data", tx: tx), Is.EqualTo(0));
                 ExecuteNonQuery("INSERT INTO data (name) VALUES ('savepointtest')", tx: tx);
-                tx.ReleaseSavepoint(name);
+                tx.Release(name);
                 Assert.That(ExecuteScalar("SELECT COUNT(*) FROM data", tx: tx), Is.EqualTo(1));
 
                 tx.Commit();
@@ -226,7 +272,37 @@ namespace Npgsql.Tests
         public void SavepointWithSemicolon()
         {
             using (var tx = Conn.BeginTransaction())
-                Assert.That(() => tx.CreateSavepoint("a;b"), Throws.Exception.TypeOf<ArgumentException>());
+                Assert.That(() => tx.Save("a;b"), Throws.Exception.TypeOf<ArgumentException>());
+        }
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/765")]
+        public void PrependedRollbackWhileStartingNewTransaction()
+        {
+            var connString = new NpgsqlConnectionStringBuilder(ConnectionString) {
+                CommandTimeout = 600,
+                InternalCommandTimeout = 30
+            };
+
+            int backendId;
+            using (var conn = new NpgsqlConnection(connString))
+            {
+                conn.Open();
+                backendId = conn.Connector.BackendProcessId;
+                conn.BeginTransaction();
+                ExecuteNonQuery("SELECT 1", conn);
+            }
+            // Connector is back in the pool with a queued ROLLBACK
+            using (var conn = new NpgsqlConnection(connString))
+            {
+                conn.Open();
+                Assert.That(conn.Connector.BackendProcessId, Is.EqualTo(backendId));
+                var tx = conn.BeginTransaction();
+                // We've captured the transaction instance, a new begin transaction is now enqueued after the rollback
+                ExecuteNonQuery("SELECT 1", conn);
+                Assert.That(tx.Connection, Is.SameAs(conn));
+                Assert.That(conn.Connector.Transaction, Is.SameAs(tx));
+            }
         }
 
         // Older tests

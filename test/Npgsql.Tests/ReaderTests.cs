@@ -1,25 +1,25 @@
-﻿// created on 27/12/2002 at 17:05
+﻿#region License
+// The PostgreSQL License
 //
-// Author:
-//     Francisco Figueiredo Jr. <fxjrlists@yahoo.com>
+// Copyright (C) 2015 The Npgsql Development Team
 //
-//    Copyright (C) 2002 The Npgsql Development Team
-//    npgsql-general@gborg.postgresql.org
-//    http://gborg.postgresql.org/project/npgsql/projdisplay.php
+// Permission to use, copy, modify, and distribute this software and its
+// documentation for any purpose, without fee, and without a written
+// agreement is hereby granted, provided that the above copyright notice
+// and this paragraph and the following two paragraphs appear in all copies.
 //
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
+// IN NO EVENT SHALL THE NPGSQL DEVELOPMENT TEAM BE LIABLE TO ANY PARTY
+// FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+// INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+// DOCUMENTATION, EVEN IF THE NPGSQL DEVELOPMENT TEAM HAS BEEN ADVISED OF
+// THE POSSIBILITY OF SUCH DAMAGE.
 //
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+// THE NPGSQL DEVELOPMENT TEAM SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
+// ON AN "AS IS" BASIS, AND THE NPGSQL DEVELOPMENT TEAM HAS NO OBLIGATIONS
+// TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#endregion
 
 using System;
 using System.Data;
@@ -198,13 +198,75 @@ namespace Npgsql.Tests
         }
 
         [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/794")]
+        public void GetFieldType()
+        {
+            using (var cmd = new NpgsqlCommand(@"SELECT 1::INT4 AS some_column", Conn))
+            using (var reader = cmd.ExecuteReader())
+            {
+                reader.Read();
+                Assert.That(reader.GetFieldType(0), Is.SameAs(typeof(int)));
+            }
+            using (var cmd = new NpgsqlCommand(@"SELECT 1::INT4 AS some_column", Conn))
+            {
+                cmd.AllResultTypesAreUnknown = true;
+                using (var reader = cmd.ExecuteReader())
+                {
+                    reader.Read();
+                    Assert.That(reader.GetFieldType(0), Is.SameAs(typeof(string)));
+                }
+            }
+        }
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/787")]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/794")]
         public void GetDataTypeName()
         {
-            var command = new NpgsqlCommand(@"SELECT 1::INT4 AS some_column", Conn);
-            var dr = command.ExecuteReader();
-            dr.Read();
-            Assert.That(dr.GetDataTypeName(0), Is.EqualTo("int4"));
-            command.Dispose();
+            using (var command = new NpgsqlCommand(@"SELECT 1::INT4 AS some_column", Conn))
+            using (var reader = command.ExecuteReader())
+            {
+                reader.Read();
+                Assert.That(reader.GetDataTypeName(0), Is.EqualTo("int4"));
+            }
+            using (var command = new NpgsqlCommand(@"SELECT '{1}'::INT4[] AS some_column", Conn))
+            using (var reader = command.ExecuteReader())
+            {
+                reader.Read();
+                Assert.That(reader.GetDataTypeName(0), Is.EqualTo("_int4"));
+            }
+            using (var command = new NpgsqlCommand(@"SELECT 1::INT4 AS some_column", Conn))
+            {
+                command.AllResultTypesAreUnknown = true;
+                using (var reader = command.ExecuteReader())
+                {
+                    reader.Read();
+                    Assert.That(reader.GetDataTypeName(0), Is.EqualTo("int4"));
+                }
+            }
+        }
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/791")]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/794")]
+        public void GetDataTypeOID()
+        {
+            var int4OID = ExecuteScalar("SELECT oid FROM pg_type WHERE typname = 'int4'");
+            using (var cmd = new NpgsqlCommand(@"SELECT 1::INT4 AS some_column", Conn))
+            using (var reader = cmd.ExecuteReader())
+            {
+                reader.Read();
+                Assert.That(reader.GetDataTypeOID(0), Is.EqualTo(int4OID));
+            }
+            using (var cmd = new NpgsqlCommand(@"SELECT 1::INT4 AS some_column", Conn))
+            {
+                cmd.AllResultTypesAreUnknown = true;
+                using (var reader = cmd.ExecuteReader())
+                {
+                    reader.Read();
+                    Assert.That(reader.GetDataTypeOID(0), Is.EqualTo(int4OID));
+                }
+            }
         }
 
         [Test]
@@ -544,15 +606,6 @@ namespace Npgsql.Tests
         #endregion
 
         [Test]
-        public void HasRowsWithoutResultset()
-        {
-            ExecuteNonQuery("CREATE TEMP TABLE data (name TEXT)");
-            var command = new NpgsqlCommand("DELETE FROM data WHERE name = 'unknown'", Conn);
-            var dr = command.ExecuteReader();
-            Assert.IsFalse(dr.HasRows);
-        }
-
-        [Test]
         public void SchemaOnlySingleRowCommandBehaviorSupport()
         {
             var command = new NpgsqlCommand("SELECT 1", Conn);
@@ -704,12 +757,17 @@ namespace Npgsql.Tests
         }
 
         [Test]
-        public void HasRows()
+        [IssueLink("https://github.com/npgsql/npgsql/issues/742")]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/800")]
+        public void HasRows([Values(PrepareOrNot.NotPrepared, PrepareOrNot.Prepared)] PrepareOrNot prepare)
         {
             ExecuteNonQuery("CREATE TEMP TABLE data (name TEXT)");
             var command = new NpgsqlCommand("SELECT 1; SELECT * FROM data WHERE name='does_not_exist'", Conn);
+            if (prepare == PrepareOrNot.Prepared)
+                command.Prepare();
             using (var dr = command.ExecuteReader())
             {
+                Assert.That(dr.HasRows, Is.True);
                 Assert.That(dr.HasRows, Is.True);
                 Assert.That(dr.Read(), Is.True);
                 Assert.That(dr.HasRows, Is.True);
@@ -717,6 +775,15 @@ namespace Npgsql.Tests
                 dr.NextResult();
                 Assert.That(dr.HasRows, Is.False);
             }
+        }
+
+        [Test]
+        public void HasRowsWithoutResultset()
+        {
+            ExecuteNonQuery("CREATE TEMP TABLE data (name TEXT)");
+            var command = new NpgsqlCommand("DELETE FROM data WHERE name = 'unknown'", Conn);
+            var dr = command.ExecuteReader();
+            Assert.IsFalse(dr.HasRows);
         }
 
         [Test]
@@ -811,27 +878,27 @@ namespace Npgsql.Tests
 
     #region Mock Type Handlers
 #if DEBUG
-    internal class SafeExceptionGeneratingHandler : TypeHandler<int>, ISimpleTypeReader<int>, ISimpleTypeWriter
+    internal class SafeExceptionGeneratingHandler : SimpleTypeHandler<int>
     {
-        public int Read(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
+        public override int Read(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
         {
             buf.ReadInt32();
             throw new SafeReadException(new Exception("Safe read exception as requested"));
         }
 
-        public int ValidateAndGetLength(object value, NpgsqlParameter parameter) { throw new NotSupportedException(); }
-        public void Write(object value, NpgsqlBuffer buf, NpgsqlParameter parameter) { throw new NotSupportedException(); }
+        public override int ValidateAndGetLength(object value, NpgsqlParameter parameter) { throw new NotSupportedException(); }
+        public override void Write(object value, NpgsqlBuffer buf, NpgsqlParameter parameter) { throw new NotSupportedException(); }
     }
 
-    internal class NonSafeExceptionGeneratingHandler : TypeHandler<int>, ISimpleTypeReader<int>, ISimpleTypeWriter
+    internal class NonSafeExceptionGeneratingHandler : SimpleTypeHandler<int>
     {
-        public int Read(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
+        public override int Read(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
         {
             throw new Exception("Non-safe read exception as requested");
         }
 
-        public int ValidateAndGetLength(object value, NpgsqlParameter parameter) { throw new NotSupportedException(); }
-        public void Write(object value, NpgsqlBuffer buf, NpgsqlParameter parameter) { throw new NotSupportedException();}
+        public override int ValidateAndGetLength(object value, NpgsqlParameter parameter) { throw new NotSupportedException(); }
+        public override void Write(object value, NpgsqlBuffer buf, NpgsqlParameter parameter) { throw new NotSupportedException();}
     }
 #endif
     #endregion

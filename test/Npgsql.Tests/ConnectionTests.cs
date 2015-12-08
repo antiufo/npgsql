@@ -1,25 +1,25 @@
-// project created on 30/11/2002 at 22:00
+#region License
+// The PostgreSQL License
 //
-// Author:
-//     Francisco Figueiredo Jr. <fxjrlists@yahoo.com>
+// Copyright (C) 2015 The Npgsql Development Team
 //
-//    Copyright (C) 2002 The Npgsql Development Team
-//    npgsql-general@gborg.postgresql.org
-//    http://gborg.postgresql.org/project/npgsql/projdisplay.php
+// Permission to use, copy, modify, and distribute this software and its
+// documentation for any purpose, without fee, and without a written
+// agreement is hereby granted, provided that the above copyright notice
+// and this paragraph and the following two paragraphs appear in all copies.
 //
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
+// IN NO EVENT SHALL THE NPGSQL DEVELOPMENT TEAM BE LIABLE TO ANY PARTY
+// FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+// INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+// DOCUMENTATION, EVEN IF THE NPGSQL DEVELOPMENT TEAM HAS BEEN ADVISED OF
+// THE POSSIBILITY OF SUCH DAMAGE.
 //
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+// THE NPGSQL DEVELOPMENT TEAM SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
+// ON AN "AS IS" BASIS, AND THE NPGSQL DEVELOPMENT TEAM HAS NO OBLIGATIONS
+// TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#endregion
 
 using System;
 using System.Net.Sockets;
@@ -30,7 +30,9 @@ using System.Data;
 using System.Resources;
 using NUnit.Framework;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Net.Security;
 using System.Text.RegularExpressions;
 using NpgsqlTypes;
 
@@ -135,8 +137,28 @@ namespace Npgsql.Tests
         [TestCase(false, TestName = "NonPooled")]
         public void ConnectionRefused(bool pooled)
         {
-            using (var conn = new NpgsqlConnection("Server=127.0.0.1;Port=44444;Database=d;User Id=x;Password=y" + (pooled ? "" : ";Pooling=false"))) {
-                Assert.That(() => conn.Open(), Throws.Exception.TypeOf<SocketException>());
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString) { Port = 44444, Pooling = pooled };
+            using (var conn = new NpgsqlConnection(csb)) {
+                Assert.That(() => conn.Open(), Throws.Exception
+                    .TypeOf<SocketException>()
+                    .With.Property("SocketErrorCode").EqualTo(SocketError.ConnectionRefused)
+                );
+                Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Closed));
+            }
+        }
+
+        [Test]
+        [TestCase(true, TestName = "Pooled")]
+        [TestCase(false, TestName = "NonPooled")]
+        public void ConnectionRefusedAsync(bool pooled)
+        {
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString) { Port = 44444, Pooling = pooled };
+            using (var conn = new NpgsqlConnection(csb))
+            {
+                Assert.That(async () => await conn.OpenAsync(), Throws.Exception
+                    .TypeOf<SocketException>()
+                    .With.Property("SocketErrorCode").EqualTo(SocketError.ConnectionRefused)
+                );
                 Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Closed));
             }
         }
@@ -145,7 +167,8 @@ namespace Npgsql.Tests
         [Ignore("Fails in a non-determinstic manner and only on the build server... investigate...")]
         public void InvalidUserId()
         {
-            using (var conn = new NpgsqlConnection(ConnectionString + ";userid=npgsql_tes;pooling=false"))
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString) { Username = "unknown", Pooling = false };
+            using (var conn = new NpgsqlConnection(csb))
             {
                 Assert.That(conn.Open, Throws.Exception
                     .TypeOf<NpgsqlException>()
@@ -158,8 +181,8 @@ namespace Npgsql.Tests
         [Test, Description("Connects with a bad password to ensure the proper error is thrown")]
         public void AuthenticationFailure()
         {
-            var badConnString = Regex.Replace(ConnectionString, @"Password=\w+", "Password=bad_password");
-            using (var conn = new NpgsqlConnection(badConnString))
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString) { Password = "bad", Pooling = false };
+            using (var conn = new NpgsqlConnection(csb))
             {
                 Assert.That(() => conn.Open(), Throws.Exception
                     .TypeOf<NpgsqlException>()
@@ -173,8 +196,8 @@ namespace Npgsql.Tests
         public void MandatoryConnectionStringParams()
         {
             Assert.That(() => new NpgsqlConnection("User ID=npgsql_tests;Password=npgsql_tests;Database=npgsql_tests").Open(), Throws.Exception.TypeOf<ArgumentException>());
-            Assert.That(() => new NpgsqlConnection("Server=localhost;User ID=npgsql_tests;Password=npgsql_tests").Open(), Throws.Exception.TypeOf<ArgumentException>());
         }
+
 
         [Test, Description("Reuses the same connection instance for a failed connection, then a successful one")]
         public void FailConnectThenSucceed()
@@ -205,6 +228,81 @@ namespace Npgsql.Tests
             finally
             {
                 ExecuteNonQuery("DROP DATABASE IF EXISTS foo");
+            }
+        }
+
+        [Test]
+        public void NoUsername()
+        {
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString) { Username = null };
+            using (var conn = new NpgsqlConnection(csb))
+                Assert.That(() => conn.Open(), Throws.Exception.TypeOf<ArgumentException>());
+        }
+
+        [Test]
+        [Timeout(10000)]
+        public void ConnectTimeout()
+        {
+            var unknownIp = Environment.GetEnvironmentVariable("NPGSQL_UNKNOWN_IP");
+            if (unknownIp == null)
+                TestUtil.IgnoreExceptOnBuildServer("NPGSQL_UNKNOWN_IP isn't defined and is required for connection timeout tests");
+
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString) {
+                Host = unknownIp,
+                Pooling = false,
+                Timeout = 2
+            };
+            using (var conn = new NpgsqlConnection(csb))
+            {
+                var sw = Stopwatch.StartNew();
+                Assert.That(() => conn.Open(), Throws.Exception.TypeOf<TimeoutException>());
+                Assert.That(sw.Elapsed.TotalMilliseconds, Is.GreaterThanOrEqualTo((csb.Timeout * 1000) - 100),
+                    string.Format("Timeout was supposed to happen after {0} seconds, but fired after {1}", csb.Timeout, sw.Elapsed.TotalSeconds));
+                Assert.That(conn.State, Is.EqualTo(ConnectionState.Closed));
+            }
+        }
+
+        [Test]
+        [Timeout(10000)]
+        public void ConnectTimeoutAsync()
+        {
+            var unknownIp = Environment.GetEnvironmentVariable("NPGSQL_UNKNOWN_IP");
+            if (unknownIp == null)
+                TestUtil.IgnoreExceptOnBuildServer("NPGSQL_UNKNOWN_IP isn't defined and is required for connection timeout tests");
+
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                Host = unknownIp,
+                Pooling = false,
+                Timeout = 2
+            };
+            using (var conn = new NpgsqlConnection(csb))
+            {
+                Assert.That(async () => await conn.OpenAsync(), Throws.Exception.TypeOf<TimeoutException>());
+                Assert.That(conn.State, Is.EqualTo(ConnectionState.Closed));
+            }
+        }
+
+        [Test]
+        [Timeout(10000)]
+        public void ConnectTimeoutCancel()
+        {
+            var unknownIp = Environment.GetEnvironmentVariable("NPGSQL_UNKNOWN_IP");
+            if (unknownIp == null)
+                TestUtil.IgnoreExceptOnBuildServer("NPGSQL_UNKNOWN_IP isn't defined and is required for connection cancellation tests");
+
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                Host = unknownIp,
+                Pooling = false,
+                Timeout = 30
+            };
+            using (var conn = new NpgsqlConnection(csb))
+            {
+                var cts = new CancellationTokenSource();
+                cts.CancelAfter(1000);
+                Assert.That(async () => await conn.OpenAsync(cts.Token), Throws.Exception.TypeOf<TaskCanceledException>());
+                Assert.That(conn.State, Is.EqualTo(ConnectionState.Closed));
             }
         }
 
@@ -344,7 +442,19 @@ namespace Npgsql.Tests
 
         #endregion
 
-        [Test, Description("Breaks a connector while it's in the pool, without a keepalive and without")]
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/703")]
+        public void NoDatabaseDefaultsToUsername()
+        {
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString) { Database = null };
+            using (var conn = new NpgsqlConnection(csb))
+            {
+                conn.Open();
+                Assert.That(ExecuteScalar("SELECT current_database()"), Is.EqualTo(csb.Username));
+            }
+        }
+
+        [Test, Description("Breaks a connector while it's in the pool, with a keepalive and without")]
         [TestCase(false, TestName = "WithoutKeepAlive")]
         [TestCase(false, TestName = "WithKeepAlive")]
         public void BreakConnectorInPool(bool keepAlive)
@@ -406,6 +516,15 @@ namespace Npgsql.Tests
         }
 
         [Test]
+        public void BeginTransactionBeforeOpen()
+        {
+            using (var conn = new NpgsqlConnection())
+            {
+                Assert.That(() => conn.BeginTransaction(), Throws.Exception.TypeOf<InvalidOperationException>());
+            }
+        }
+
+        [Test]
         public void SequencialTransaction()
         {
             Conn.BeginTransaction().Rollback();
@@ -438,15 +557,13 @@ namespace Npgsql.Tests
         }
 
         [Test]
-        public void SearchPathSupport()
+        public void SearchPath()
         {
-            using (var conn = new NpgsqlConnection(ConnectionString + ";searchpath=public"))
+            var connString = new NpgsqlConnectionStringBuilder(ConnectionString) { SearchPath = "foo" };
+            using (var conn = new NpgsqlConnection(connString))
             {
                 conn.Open();
-                var c = new NpgsqlCommand("show search_path", conn);
-                var searchpath = (String)c.ExecuteScalar();
-                //Note, public is no longer implicitly added to paths, so this is no longer "public, public".
-                Assert.AreEqual("public", searchpath);
+                Assert.That(ExecuteScalar("SHOW search_path", conn), Contains.Substring("foo"));
             }
         }
 
@@ -587,7 +704,7 @@ namespace Npgsql.Tests
                 connection.Open();
                 using (var command = connection.CreateCommand())
                 {
-                    const String parameterName = "p_int";
+                    const String parameterName = "@p_int";
                     command.CommandText = "SELECT * FROM data WHERE int=" + String.Format(parameterMarkerFormat, parameterName);
                     command.Parameters.Add(new NpgsqlParameter(parameterName, 4));
                     using (var reader = command.ExecuteReader())
@@ -657,6 +774,159 @@ namespace Npgsql.Tests
         {
             using (var conn = new NpgsqlConnection(ConnectionString + ";UseSslStream=true;ContinuousProcessing=true"))
                 Assert.That(() => conn.Open(), Throws.Exception.TypeOf<ArgumentException>());
+        }
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/783")]
+        public void PersistSecurityInfoIsOn()
+        {
+            var connString = new NpgsqlConnectionStringBuilder(ConnectionString) { PersistSecurityInfo = true };
+            using (var conn = new NpgsqlConnection(connString))
+            {
+                var passwd = new NpgsqlConnectionStringBuilder(conn.ConnectionString).Password;
+                Assert.That(passwd, Is.Not.Null);
+                conn.Open();
+                Assert.That(new NpgsqlConnectionStringBuilder(conn.ConnectionString).Password, Is.EqualTo(passwd));
+            }
+        }
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/783")]
+        public void NoPasswordWithoutPersistSecurityInfo()
+        {
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                var csb = new NpgsqlConnectionStringBuilder(conn.ConnectionString);
+                Assert.That(csb.PersistSecurityInfo, Is.False);
+                Assert.That(csb.Password, Is.Not.Null);
+                conn.Open();
+                Assert.That(new NpgsqlConnectionStringBuilder(conn.ConnectionString).Password, Is.Null);
+            }
+        }
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/743")]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/783")]
+        public void Clone()
+        {
+            var connString = new NpgsqlConnectionStringBuilder(ConnectionString) { Pooling = false };
+            using (var conn = new NpgsqlConnection(connString))
+            {
+                ProvideClientCertificatesCallback callback1 = certificates => { };
+                conn.ProvideClientCertificatesCallback = callback1;
+                RemoteCertificateValidationCallback callback2 = (sender, certificate, chain, errors) => true;
+                conn.UserCertificateValidationCallback = callback2;
+
+                conn.Open();
+                using (var conn2 = (NpgsqlConnection) ((ICloneable) conn).Clone())
+                {
+                    Assert.That(conn2.ConnectionString, Is.EqualTo(conn.ConnectionString));
+                    Assert.That(conn2.ProvideClientCertificatesCallback, Is.SameAs(callback1));
+                    Assert.That(conn2.UserCertificateValidationCallback, Is.SameAs(callback2));
+                    conn2.Open();
+                }
+            }
+        }
+
+        [Test, IssueLink("https://github.com/npgsql/npgsql/issues/824")]
+        public void ReloadTypes()
+        {
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                conn.Open();
+                Assert.That(ExecuteScalar("SELECT EXISTS (SELECT * FROM pg_type WHERE typname='reload_types_enum')"), Is.False);
+                ExecuteNonQuery("CREATE TYPE pg_temp.reload_types_enum AS ENUM ('First', 'Second')");
+                conn.ReloadTypes();
+                conn.MapEnum<ReloadTypesEnum>("reload_types_enum");
+            }
+        }
+        enum ReloadTypesEnum { First, Second };
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/736")]
+        public void ManyOpenClose()
+        {
+            // The connector's _sentRfqPrependedMessages is a byte, too many open/closes made it overflow
+            for (var i = 0; i < 255; i++)
+            {
+                using (var conn = new NpgsqlConnection(ConnectionString))
+                {
+                    conn.Open();
+                }
+            }
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                conn.Open();
+            }
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                conn.Open();
+                Assert.That(ExecuteScalar("SELECT 1", conn), Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/736")]
+        public void ManyOpenCloseWithTransaction()
+        {
+            // The connector's _sentRfqPrependedMessages is a byte, too many open/closes made it overflow
+            for (var i = 0; i < 255; i++)
+            {
+                using (var conn = new NpgsqlConnection(ConnectionString))
+                {
+                    conn.Open();
+                    conn.BeginTransaction();
+                }
+            }
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                conn.Open();
+                Assert.That(ExecuteScalar("SELECT 1", conn), Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/736")]
+        public void RollbackOnCloseThenOpenClose()
+        {
+            int processId;
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                conn.Open();
+                processId = conn.Connector.BackendProcessId;
+                conn.BeginTransaction();
+                ExecuteNonQuery("SELECT 1", conn);
+            }
+            // This close prepended a rollback for the next time the connector is used
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                conn.Open();
+                Assert.That(conn.Connector.BackendProcessId, Is.EqualTo(processId));
+            }
+            // Make sure the prepended rollback is maintained
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                conn.Open();
+                Assert.That(conn.Connector.BackendProcessId, Is.EqualTo(processId));
+                Assert.That(ExecuteScalar("SELECT 1", conn), Is.EqualTo(1));
+            }
+        }
+
+        [Test, Description("Tests an exception happening when sending the Terminate message while closing a ready connector")]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/777")]
+        public void ExceptionDuringClose()
+        {
+            var connString = new NpgsqlConnectionStringBuilder(ConnectionString) { Pooling = false };
+            using (var conn = new NpgsqlConnection(connString))
+            {
+                conn.Open();
+                var connectorId = conn.ProcessID;
+
+                // Use another connection to kill our connector
+                ExecuteNonQuery($"SELECT pg_terminate_backend({connectorId})");
+
+                conn.Close();
+            }
         }
 
         #region GetSchema

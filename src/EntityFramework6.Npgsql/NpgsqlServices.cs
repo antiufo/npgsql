@@ -23,9 +23,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Data.Common;
 using System.Text;
-using System.Xml;
 #if ENTITIES6
 using System.Data.Entity.Core.Common;
 using System.Data.Entity.Core.Common.CommandTrees;
@@ -33,10 +31,13 @@ using System.Data.Entity.Core.Metadata.Edm;
 using System.Data.Entity.Migrations.Sql;
 using System.Data.Entity.Infrastructure.DependencyResolution;
 #else
+using System.Data.Common;
 using System.Data.Common.CommandTrees;
 using System.Data.Metadata.Edm;
 #endif
 using Npgsql.SqlGenerators;
+using DbConnection = System.Data.Common.DbConnection;
+using DbCommand = System.Data.Common.DbCommand;
 
 namespace Npgsql
 {
@@ -63,30 +64,30 @@ namespace Npgsql
 
         protected override DbCommandDefinition CreateDbCommandDefinition(DbProviderManifest providerManifest, DbCommandTree commandTree)
         {
-            return CreateCommandDefinition(CreateDbCommand(commandTree));
+            return CreateCommandDefinition(CreateDbCommand(((NpgsqlProviderManifest)providerManifest).Version, commandTree));
         }
 
-        internal DbCommand CreateDbCommand(DbCommandTree commandTree)
+        internal DbCommand CreateDbCommand(Version serverVersion, DbCommandTree commandTree)
         {
             if (commandTree == null)
                 throw new ArgumentNullException("commandTree");
 
-            DbCommand command = NpgsqlFactory.Instance.CreateCommand();
+            NpgsqlCommand command = new NpgsqlCommand();
 
             foreach (KeyValuePair<string, TypeUsage> parameter in commandTree.Parameters)
             {
-                DbParameter dbParameter = command.CreateParameter();
+                NpgsqlParameter dbParameter = new NpgsqlParameter();
                 dbParameter.ParameterName = parameter.Key;
-                dbParameter.DbType = NpgsqlProviderManifest.GetDbType(((PrimitiveType)parameter.Value.EdmType).PrimitiveTypeKind);
+                dbParameter.NpgsqlDbType = NpgsqlProviderManifest.GetNpgsqlDbType(((PrimitiveType)parameter.Value.EdmType).PrimitiveTypeKind);
                 command.Parameters.Add(dbParameter);
             }
 
-            TranslateCommandTree(commandTree, command);
+            TranslateCommandTree(serverVersion, commandTree, command);
 
             return command;
         }
 
-        private void TranslateCommandTree(DbCommandTree commandTree, DbCommand command)
+        internal void TranslateCommandTree(Version serverVersion, DbCommandTree commandTree, DbCommand command, bool createParametersForNonSelect = true)
         {
             SqlBaseGenerator sqlGenerator = null;
 
@@ -115,6 +116,9 @@ namespace Npgsql
                 // TODO: get a message (unsupported DbCommandTree type)
                 throw new ArgumentException();
             }
+            sqlGenerator._createParametersForConstants = select != null ? false : createParametersForNonSelect;
+            sqlGenerator._command = (NpgsqlCommand)command;
+            sqlGenerator.Version = serverVersion;
 
             sqlGenerator.BuildCommand(command);
         }
@@ -192,7 +196,7 @@ namespace Npgsql
         {
             var connectionBuilder = new NpgsqlConnectionStringBuilder(connection.ConnectionString)
             {
-                Database = "template1",
+                Database = connection.EntityAdminDatabase ?? "template1",
                 Pooling = false
             };
 

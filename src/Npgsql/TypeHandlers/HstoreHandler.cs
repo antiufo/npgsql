@@ -26,14 +26,14 @@ using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Text;
+using JetBrains.Annotations;
 using Npgsql.BackendMessages;
 using NpgsqlTypes;
 
 namespace Npgsql.TypeHandlers
 {
     [TypeMapping("hstore", NpgsqlDbType.Hstore)]
-    class HstoreHandler : TypeHandler<IDictionary<string, string>>,
-        IChunkingTypeWriter, IChunkingTypeReader<IDictionary<string, string>>, IChunkingTypeReader<string>
+    class HstoreHandler : ChunkingTypeHandler<IDictionary<string, string>>, IChunkingTypeHandler<string>
     {
         NpgsqlBuffer _buf;
         NpgsqlParameter _parameter;
@@ -57,7 +57,7 @@ namespace Npgsql.TypeHandlers
 
         #region Write
 
-        public int ValidateAndGetLength(object value, ref LengthCache lengthCache, NpgsqlParameter parameter = null)
+        public override int ValidateAndGetLength(object value, ref LengthCache lengthCache, NpgsqlParameter parameter = null)
         {
             if (lengthCache == null) {
                 lengthCache = new LengthCache(1);
@@ -92,7 +92,7 @@ namespace Npgsql.TypeHandlers
             throw CreateConversionException(value.GetType());
         }
 
-        public void PrepareWrite(object value, NpgsqlBuffer buf, LengthCache lengthCache, NpgsqlParameter parameter)
+        public override void PrepareWrite(object value, NpgsqlBuffer buf, LengthCache lengthCache, NpgsqlParameter parameter)
         {
             _buf = buf;
             _lengthCache = lengthCache;
@@ -108,7 +108,7 @@ namespace Npgsql.TypeHandlers
             throw PGUtil.ThrowIfReached();
         }
 
-        public bool Write(ref DirectBuffer directBuf)
+        public override bool Write(ref DirectBuffer directBuf)
         {
             switch (_state)
             {
@@ -173,19 +173,14 @@ namespace Npgsql.TypeHandlers
 
         #region Read
 
-        void IChunkingTypeReader<IDictionary<string, string>>.PrepareRead(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
+        public override void PrepareRead(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
         {
             _buf = buf;
             _fieldDescription = fieldDescription;
             _state = State.Count;
         }
 
-        void IChunkingTypeReader<string>.PrepareRead(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
-        {
-            ((IChunkingTypeReader<IDictionary<string, string>>)this).PrepareRead(buf, len, fieldDescription);
-        }
-
-        public bool Read(out IDictionary<string, string> result)
+        public override bool Read([CanBeNull] out IDictionary<string, string> result)
         {
             result = null;
             switch (_state)
@@ -250,10 +245,10 @@ namespace Npgsql.TypeHandlers
             }
         }
 
-        public bool Read(out string result)
+        public bool Read([CanBeNull] out string result)
         {
             IDictionary<string, string> dict;
-            if (!((IChunkingTypeReader<IDictionary<string, string>>) this).Read(out dict))
+            if (!((IChunkingTypeHandler<IDictionary<string, string>>) this).Read(out dict))
             {
                 result = null;
                 return false;

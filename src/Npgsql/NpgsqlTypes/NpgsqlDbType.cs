@@ -181,6 +181,12 @@ namespace NpgsqlTypes
         Name = 32,
 
         /// <summary>
+        /// Corresponds to the PostgreSQL "citext" type for the citext module.
+        /// </summary>
+        /// <remarks>See http://www.postgresql.org/docs/current/static/citext.html</remarks>
+        Citext = 51,
+
+        /// <summary>
         /// Corresponds to the PostgreSQL "char" type.
         /// </summary>
         /// <remarks>
@@ -405,6 +411,11 @@ namespace NpgsqlTypes
         Oidvector = 29,
 
         /// <summary>
+        /// Corresponds to the PostgreSQL internal "int2vector" type.
+        /// </summary>
+        Int2Vector = 52,
+
+        /// <summary>
         /// Corresponds to the PostgreSQL "oid" type.
         /// </summary>
         /// <remarks>See http://www.postgresql.org/docs/current/static/datatype-oid.html</remarks>
@@ -422,6 +433,11 @@ namespace NpgsqlTypes
         /// <remarks>See http://www.postgresql.org/docs/current/static/datatype-oid.html</remarks>
         Cid = 43,
 
+        /// <summary>
+        /// Corresponds to the PostgreSQL "regtype" type, a numeric (OID) ID of a type in the pg_type table.
+        /// </summary>
+        Regtype = 49,
+
         #endregion
 
         #region Special
@@ -436,6 +452,15 @@ namespace NpgsqlTypes
         /// unsupported by Npgsql.
         /// </remarks>
         Unknown = 40,
+
+        #endregion
+
+        #region Postgis
+
+        /// <summary>
+        /// The geometry type for postgresql spatial extension postgis.
+        /// </summary>
+        Geometry = 50
 
         #endregion
     }

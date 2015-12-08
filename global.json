@@ -1,6 +1,7 @@
 {
   "sources": [
     "src",
+    "test",
     "external/EntityFramework/src",
     "external/EntityFramework/test"
   ],

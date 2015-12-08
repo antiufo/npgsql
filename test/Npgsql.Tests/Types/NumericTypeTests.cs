@@ -1,4 +1,27 @@
-﻿using System;
+﻿#region License
+// The PostgreSQL License
+//
+// Copyright (C) 2015 The Npgsql Development Team
+//
+// Permission to use, copy, modify, and distribute this software and its
+// documentation for any purpose, without fee, and without a written
+// agreement is hereby granted, provided that the above copyright notice
+// and this paragraph and the following two paragraphs appear in all copies.
+//
+// IN NO EVENT SHALL THE NPGSQL DEVELOPMENT TEAM BE LIABLE TO ANY PARTY
+// FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+// INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+// DOCUMENTATION, EVEN IF THE NPGSQL DEVELOPMENT TEAM HAS BEEN ADVISED OF
+// THE POSSIBILITY OF SUCH DAMAGE.
+//
+// THE NPGSQL DEVELOPMENT TEAM SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
+// ON AN "AS IS" BASIS, AND THE NPGSQL DEVELOPMENT TEAM HAS NO OBLIGATIONS
+// TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#endregion
+
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
@@ -97,18 +120,23 @@ namespace Npgsql.Tests.Types
         }
 
         [Test, Description("Tests some types which are aliased to UInt32")]
-        [TestCase("oid")]
-        [TestCase("xid")]
-        [TestCase("cid")]
-        public void ReadUInt32Aliases(string typename)
+        [TestCase(NpgsqlDbType.Oid, TestName="oid")]
+        [TestCase(NpgsqlDbType.Xid, TestName="xid")]
+        [TestCase(NpgsqlDbType.Cid, TestName="cid")]
+        public void UInt32(NpgsqlDbType npgsqlDbType)
         {
-            const uint expected = 8;
-            var cmd = new NpgsqlCommand(String.Format("SELECT '{0}'::{1}", expected, typename), Conn);
-            var reader = cmd.ExecuteReader();
-            reader.Read();
-            Assert.That(reader.GetValue(0), Is.EqualTo(expected));
-            reader.Dispose();
-            cmd.Dispose();
+            var expected = 8u;
+            using (var cmd = new NpgsqlCommand("SELECT @p", Conn))
+            {
+                cmd.Parameters.Add(new NpgsqlParameter("p", npgsqlDbType) { Value = expected });
+                using (var reader = cmd.ExecuteReader())
+                {
+                    reader.Read();
+                    Assert.That(reader[0], Is.EqualTo(expected));
+                    Assert.That(reader.GetProviderSpecificValue(0), Is.EqualTo(expected));
+                    Assert.That(reader.GetFieldType(0), Is.EqualTo(typeof(uint)));
+                }
+            }
         }
 
         [Test]
@@ -302,7 +330,7 @@ namespace Npgsql.Tests.Types
         {
             using (var cmd = Conn.CreateCommand())
             {
-                cmd.CommandText = "select '1'::MONEY, '123.45'::MONEY, '1234567890123.45'::MONEY";
+                cmd.CommandText = "select '1'::MONEY, '12345'::MONEY / 100, '123456789012345'::MONEY / 100";
                 if (prepare == PrepareOrNot.Prepared)
                     cmd.Prepare();
                 using (var reader = cmd.ExecuteReader())

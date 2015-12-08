@@ -48,9 +48,9 @@ namespace Npgsql
         /// Specifies the <see cref="NpgsqlConnection"/> object associated with the transaction.
         /// </summary>
         /// <value>The <see cref="NpgsqlConnection"/> object associated with the transaction.</value>
-        protected override DbConnection DbConnection { get { return Connection; } }
+        protected override DbConnection DbConnection => Connection;
 
-        NpgsqlConnector Connector { get { return Connection.Connector; } }
+        NpgsqlConnector Connector => Connection.Connector;
 
         bool _isDisposed;
 
@@ -166,30 +166,30 @@ namespace Npgsql
         /// <summary>
         /// Creates a transaction save point.
         /// </summary>
-        public void CreateSavepoint(string name)
+        public void Save(string name)
         {
             if (name == null)
-                throw new ArgumentNullException("name");
+                throw new ArgumentNullException(nameof(name));
             if (string.IsNullOrWhiteSpace(name))
-                throw new ArgumentException("name can't be empty", "name");
+                throw new ArgumentException("name can't be empty", nameof(name));
             if (name.Contains(";"))
                 throw new ArgumentException("name can't contain a semicolon");
             Contract.EndContractBlock();
 
             CheckReady();
             Log.Debug("Create savepoint", Connection.Connector.Id);
-            Connector.ExecuteInternalCommand(new QueryMessage(string.Format("SAVEPOINT {0}", name)));
+            Connector.ExecuteInternalCommand(new QueryMessage($"SAVEPOINT {name}"));
         }
 
         /// <summary>
         /// Rolls back a transaction from a pending savepoint state.
         /// </summary>
-        public void RollbackToSavepoint(string name)
+        public void Rollback(string name)
         {
             if (name == null)
-                throw new ArgumentNullException("name");
+                throw new ArgumentNullException(nameof(name));
             if (string.IsNullOrWhiteSpace(name))
-                throw new ArgumentException("name can't be empty", "name");
+                throw new ArgumentException("name can't be empty", nameof(name));
             if (name.Contains(";"))
                 throw new ArgumentException("name can't contain a semicolon");
             Contract.EndContractBlock();
@@ -201,7 +201,7 @@ namespace Npgsql
             try {
                 // If we're in a failed transaction we can't set the timeout
                 var withTimeout = Connector.TransactionStatus != TransactionStatus.InFailedTransactionBlock;
-                Connector.ExecuteInternalCommand(new QueryMessage(string.Format("ROLLBACK TO SAVEPOINT {0}", name)), withTimeout);
+                Connector.ExecuteInternalCommand(new QueryMessage($"ROLLBACK TO SAVEPOINT {name}"), withTimeout);
             } finally {
                 // The rollback may change the value of statement_value, set to unknown
                 Connection.Connector.SetBackendTimeoutToUnknown();
@@ -211,12 +211,12 @@ namespace Npgsql
         /// <summary>
         /// Rolls back a transaction from a pending savepoint state.
         /// </summary>
-        public void ReleaseSavepoint(string name)
+        public void Release(string name)
         {
             if (name == null)
-                throw new ArgumentNullException("name");
+                throw new ArgumentNullException(nameof(name));
             if (string.IsNullOrWhiteSpace(name))
-                throw new ArgumentException("name can't be empty", "name");
+                throw new ArgumentException("name can't be empty", nameof(name));
             if (name.Contains(";"))
                 throw new ArgumentException("name can't contain a semicolon");
             Contract.EndContractBlock();
@@ -225,7 +225,7 @@ namespace Npgsql
 
             Log.Debug("Release savepoint", Connection.Connector.Id);
 
-            Connector.ExecuteInternalCommand(new QueryMessage(string.Format("RELEASE SAVEPOINT {0}", name)));
+            Connector.ExecuteInternalCommand(new QueryMessage($"RELEASE SAVEPOINT {name}"));
         }
 
         #endregion

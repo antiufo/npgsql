@@ -52,7 +52,7 @@ namespace Npgsql.FrontendMessages
             _description = description;
         }
 
-        internal override int Length { get { return _data.Length; } }
+        internal override int Length => _data.Length;
 
         internal override void Write(NpgsqlBuffer buf)
         {
@@ -87,6 +87,10 @@ namespace Npgsql.FrontendMessages
             SetStmtTimeout120Sec      = BuildQuery("SET statement_timeout = 120000");
 
             _tempBuf = null;
+
+            BeginTransactionMessages = new[] {
+                BeginTransRepeatableRead, BeginTransSerializable, BeginTransReadCommitted, BeginTransReadUncommitted
+            };
         }
 
         static PregeneratedMessage BuildQuery(string query)
@@ -117,5 +121,7 @@ namespace Npgsql.FrontendMessages
         internal static readonly PregeneratedMessage SetStmtTimeout60Sec;
         internal static readonly PregeneratedMessage SetStmtTimeout90Sec;
         internal static readonly PregeneratedMessage SetStmtTimeout120Sec;
+
+        internal static readonly PregeneratedMessage[] BeginTransactionMessages;
     }
 }

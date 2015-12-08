@@ -1,4 +1,27 @@
-﻿using System;
+﻿#region License
+// The PostgreSQL License
+//
+// Copyright (C) 2015 The Npgsql Development Team
+//
+// Permission to use, copy, modify, and distribute this software and its
+// documentation for any purpose, without fee, and without a written
+// agreement is hereby granted, provided that the above copyright notice
+// and this paragraph and the following two paragraphs appear in all copies.
+//
+// IN NO EVENT SHALL THE NPGSQL DEVELOPMENT TEAM BE LIABLE TO ANY PARTY
+// FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+// INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+// DOCUMENTATION, EVEN IF THE NPGSQL DEVELOPMENT TEAM HAS BEEN ADVISED OF
+// THE POSSIBILITY OF SUCH DAMAGE.
+//
+// THE NPGSQL DEVELOPMENT TEAM SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
+// ON AN "AS IS" BASIS, AND THE NPGSQL DEVELOPMENT TEAM HAS NO OBLIGATIONS
+// TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#endregion
+
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
@@ -52,11 +75,16 @@ namespace Npgsql.Tests.Types
             var expected = new int[Conn.BufferSize / 4 + 100];
             for (var i = 0; i < expected.Length; i++)
                 expected[i] = i;
-            var cmd = new NpgsqlCommand("SELECT @p", Conn);
-            var p = new NpgsqlParameter { ParameterName = "p", Value = expected };
-            cmd.Parameters.Add(p);
-            Assert.That(cmd.ExecuteScalar(), Is.EqualTo(expected));
-            cmd.Dispose();
+            using (var cmd = new NpgsqlCommand("SELECT @p", Conn))
+            {
+                var p = new NpgsqlParameter { ParameterName = "p", Value = expected };
+                cmd.Parameters.Add(p);
+                using (var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess))
+                {
+                    reader.Read();
+                    Assert.That(reader[0], Is.EqualTo(expected));
+                }
+            }
         }
 
         [Test, Description("Roundtrips a large, two-dimensional array of ints that will be chunked")]
@@ -68,11 +96,16 @@ namespace Npgsql.Tests.Types
                 expected[0,i] = i;
             for (var i = 0; i < len; i++)
                 expected[1,i] = i;
-            var cmd = new NpgsqlCommand("SELECT @p", Conn);
-            var p = new NpgsqlParameter { ParameterName = "p", Value = expected };
-            cmd.Parameters.Add(p);
-            Assert.That(cmd.ExecuteScalar(), Is.EqualTo(expected));
-            cmd.Dispose();
+            using (var cmd = new NpgsqlCommand("SELECT @p", Conn))
+            {
+                var p = new NpgsqlParameter {ParameterName = "p", Value = expected};
+                cmd.Parameters.Add(p);
+                using (var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess))
+                {
+                    reader.Read();
+                    Assert.That(reader[0], Is.EqualTo(expected));
+                }
+            }
         }
 
         [Test, Description("Roundtrips a long, one-dimensional array of strings, including a null")]
@@ -85,11 +118,9 @@ namespace Npgsql.Tests.Types
             {
                 var p = new NpgsqlParameter("p", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = expected };
                 cmd.Parameters.Add(p);
-                using (var reader = cmd.ExecuteReader())
+                using (var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess))
                 {
                     reader.Read();
-                    Assert.That(reader.GetValue(0), Is.EqualTo(expected));
-                    Assert.That(reader.GetProviderSpecificValue(0), Is.EqualTo(expected));
                     Assert.That(reader.GetFieldValue<string[]>(0), Is.EqualTo(expected));
                 }
             }
@@ -197,16 +228,28 @@ namespace Npgsql.Tests.Types
         public void IListGeneric()
         {
             var expected = new[] { 1, 2, 3 };
-            var cmd = new NpgsqlCommand("SELECT @p1, @p2", Conn);
-            var p1 = new NpgsqlParameter { ParameterName = "p1", Value = expected.ToList() };
-            var p2 = new NpgsqlParameter { ParameterName = "p2", Value = expected.ToList() };
-            cmd.Parameters.Add(p1);
-            cmd.Parameters.Add(p2);
-            var reader = cmd.ExecuteReader();
-            reader.Read();
-            Assert.That(reader[0], Is.EqualTo(expected.ToArray()));
-            Assert.That(reader[1], Is.EqualTo(expected.ToArray()));
-            cmd.Dispose();
+            using (var cmd = new NpgsqlCommand("SELECT @p1, @p2", Conn)) {
+                var p1 = new NpgsqlParameter {ParameterName = "p1", Value = expected.ToList()};
+                var p2 = new NpgsqlParameter {ParameterName = "p2", Value = expected.ToList()};
+                cmd.Parameters.Add(p1);
+                cmd.Parameters.Add(p2);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    reader.Read();
+                    Assert.That(reader[0], Is.EqualTo(expected.ToArray()));
+                    Assert.That(reader[1], Is.EqualTo(expected.ToArray()));
+                }
+            }
+        }
+
+        [Test, IssueLink("https://github.com/npgsql/npgsql/issues/844")]
+        public void IEnumerableThrowsFriendlyException()
+        {
+            using (var cmd = new NpgsqlCommand("SELECT @p1", Conn))
+            {
+                cmd.Parameters.AddWithValue("p1", Enumerable.Range(1, 3));
+                Assert.That(() => cmd.ExecuteScalar(), Throws.Exception.TypeOf<NotSupportedException>().With.Message.Contains("use .ToList()/.ToArray() instead"));
+            }
         }
     }
 }

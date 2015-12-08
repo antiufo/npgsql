@@ -1,4 +1,27 @@
-﻿using System;
+﻿#region License
+// The PostgreSQL License
+//
+// Copyright (C) 2015 The Npgsql Development Team
+//
+// Permission to use, copy, modify, and distribute this software and its
+// documentation for any purpose, without fee, and without a written
+// agreement is hereby granted, provided that the above copyright notice
+// and this paragraph and the following two paragraphs appear in all copies.
+//
+// IN NO EVENT SHALL THE NPGSQL DEVELOPMENT TEAM BE LIABLE TO ANY PARTY
+// FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+// INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+// DOCUMENTATION, EVEN IF THE NPGSQL DEVELOPMENT TEAM HAS BEEN ADVISED OF
+// THE POSSIBILITY OF SUCH DAMAGE.
+//
+// THE NPGSQL DEVELOPMENT TEAM SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
+// ON AN "AS IS" BASIS, AND THE NPGSQL DEVELOPMENT TEAM HAS NO OBLIGATIONS
+// TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#endregion
+
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
@@ -326,6 +349,38 @@ namespace Npgsql.Tests.Types
                     reader.Read();
                     Assert.That(reader.GetString(0), Is.EqualTo(expected.ToString()));
                     Assert.That(() => reader.GetChar(0), Throws.Exception);
+                }
+            }
+        }
+
+        [Test, Description("Checks support for the citext contrib type")]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/695")]
+        public void Citext()
+        {
+            if (Conn.PostgreSqlVersion >= new Version(9, 1, 0))
+            {
+                ExecuteNonQuery("CREATE EXTENSION IF NOT EXISTS citext");
+                TypeHandlerRegistry.ClearBackendTypeCache();
+            }
+
+            using (var conn = new NpgsqlConnection(ConnectionString + ";Pooling=false"))
+            {
+                conn.Open();
+                var value = "Foo";
+                using (var cmd = new NpgsqlCommand("SELECT @p::CITEXT", conn))
+                {
+                    cmd.Parameters.AddWithValue("p", value);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        reader.Read();
+                        Assert.That(reader.GetString(0), Is.EqualTo(value));
+                    }
+                }
+                using (var cmd = new NpgsqlCommand("SELECT @p1::CITEXT = @p2::CITEXT", Conn))
+                {
+                    cmd.Parameters.AddWithValue("p1", NpgsqlDbType.Citext, "abc");
+                    cmd.Parameters.AddWithValue("p2", NpgsqlDbType.Citext, "ABC");
+                    Assert.That(cmd.ExecuteScalar(), Is.True);
                 }
             }
         }

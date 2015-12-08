@@ -1,4 +1,27 @@
-﻿using Npgsql;
+﻿#region License
+// The PostgreSQL License
+//
+// Copyright (C) 2015 The Npgsql Development Team
+//
+// Permission to use, copy, modify, and distribute this software and its
+// documentation for any purpose, without fee, and without a written
+// agreement is hereby granted, provided that the above copyright notice
+// and this paragraph and the following two paragraphs appear in all copies.
+//
+// IN NO EVENT SHALL THE NPGSQL DEVELOPMENT TEAM BE LIABLE TO ANY PARTY
+// FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+// INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+// DOCUMENTATION, EVEN IF THE NPGSQL DEVELOPMENT TEAM HAS BEEN ADVISED OF
+// THE POSSIBILITY OF SUCH DAMAGE.
+//
+// THE NPGSQL DEVELOPMENT TEAM SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
+// ON AN "AS IS" BASIS, AND THE NPGSQL DEVELOPMENT TEAM HAS NO OBLIGATIONS
+// TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#endregion
+
+using Npgsql;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
@@ -7,6 +30,9 @@ using System.Data.Entity;
 using System.Linq;
 using System.Text;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Data.Entity.Core.Metadata.Edm;
+using System.Data.Entity.Core.Objects;
+using System.Data.Entity.Infrastructure;
 using Npgsql.Tests;
 
 namespace EntityFramework6.Npgsql.Tests
@@ -36,7 +62,8 @@ namespace EntityFramework6.Npgsql.Tests
                 createSequenceConn.Open();
                 ExecuteNonQuery("create sequence blog_int_computed_value_seq", createSequenceConn);
                 ExecuteNonQuery("alter table \"dbo\".\"Blogs\" alter column \"IntComputedValue\" set default nextval('blog_int_computed_value_seq');", createSequenceConn);
-
+                ExecuteNonQuery("alter table \"dbo\".\"Posts\" alter column \"VarbitColumn\" type varbit using null", createSequenceConn);
+                ExecuteNonQuery("CREATE OR REPLACE FUNCTION \"dbo\".\"StoredAddFunction\"(integer, integer) RETURNS integer AS $$ SELECT $1 + $2; $$ LANGUAGE SQL;", createSequenceConn);
             }
 
 
@@ -75,6 +102,7 @@ namespace EntityFramework6.Npgsql.Tests
             public string Content { get; set; }
             public byte Rating { get; set; }
             public DateTime CreationDate { get; set; }
+            public string VarbitColumn { get; set; }
             public int BlogId { get; set; }
             public virtual Blog Blog { get; set; }
         }
@@ -87,18 +115,67 @@ namespace EntityFramework6.Npgsql.Tests
         public class BloggingContext : DbContext
         {
             public BloggingContext(string connection)
-                : base(new NpgsqlConnection(connection), true)
+                : base(new NpgsqlConnection(connection), CreateModel(new NpgsqlConnection(connection)), true)
             {
             }
 
             public DbSet<Blog> Blogs { get; set; }
             public DbSet<Post> Posts { get; set; }
             public DbSet<NoColumnsEntity> NoColumnsEntities { get; set; }
+
+            [DbFunction("BloggingContext", "ClrStoredAddFunction")]
+            public static int StoredAddFunction(int val1, int val2)
+            {
+                throw new NotSupportedException();
+            }
+
+            private static DbCompiledModel CreateModel(NpgsqlConnection connection)
+            {
+                var dbModelBuilder = new DbModelBuilder(DbModelBuilderVersion.Latest);
+
+                // Import Sets
+                dbModelBuilder.Entity<Blog>();
+                dbModelBuilder.Entity<Post>();
+                dbModelBuilder.Entity<NoColumnsEntity>();
+
+                // Import function
+                var dbModel = dbModelBuilder.Build(connection);
+                var edmType = PrimitiveType.GetEdmPrimitiveType(PrimitiveTypeKind.Int32);
+
+                var payload = new EdmFunctionPayload
+                {
+                    ParameterTypeSemantics = ParameterTypeSemantics.AllowImplicitConversion,
+                    Schema = "dbo",
+                    IsComposable = true,
+                    IsNiladic = false,
+                    IsBuiltIn = false,
+                    IsAggregate = false,
+                    IsFromProviderManifest = true,
+                    StoreFunctionName = "StoredAddFunction",
+                    ReturnParameters = new[]
+                    {
+                        FunctionParameter.Create("ReturnType", edmType, ParameterMode.ReturnValue)
+                    },
+                    Parameters = new[]
+                    {
+                        FunctionParameter.Create("Value1", edmType, ParameterMode.In),
+                        FunctionParameter.Create("Value2", edmType, ParameterMode.In)
+                    }
+                };
+
+                var myFunc = EdmFunction.Create("ClrStoredAddFunction", "BloggingContext", DataSpace.SSpace, payload, null);
+                dbModel.StoreModel.AddItem(myFunc);
+                var compiledModel = dbModel.Compile();
+
+                return compiledModel;
+            }
         }
 
         [Test]
         public void InsertAndSelect()
         {
+            var varbitVal = "10011";
+
             using (var context = new BloggingContext(ConnectionStringEF))
             {
                 var blog = new Blog()
@@ -111,7 +188,8 @@ namespace EntityFramework6.Npgsql.Tests
                     {
                         Content = "Some post content " + i,
                         Rating = (byte)i,
-                        Title = "Some post Title " + i
+                        Title = "Some post Title " + i,
+                        VarbitColumn = varbitVal
                     });
                 context.Blogs.Add(blog);
                 context.NoColumnsEntities.Add(new NoColumnsEntity());
@@ -126,7 +204,12 @@ namespace EntityFramework6.Npgsql.Tests
                 foreach (var post in posts)
                 {
                     StringAssert.StartsWith("Some post Title ", post.Title);
+                    Assert.AreEqual(varbitVal, post.VarbitColumn);
                 }
+                var someParameter = "Some";
+                Assert.IsTrue(context.Posts.Any(p => p.Title.StartsWith(someParameter)));
+                Assert.IsTrue(context.Posts.Select(p => p.VarbitColumn == varbitVal).First());
+                Assert.IsTrue(context.Posts.Select(p => p.VarbitColumn == "10011").First());
                 Assert.AreEqual(1, context.NoColumnsEntities.Count());
             }
         }
@@ -368,6 +451,8 @@ namespace EntityFramework6.Npgsql.Tests
                                                    one + ~(two * three) + ~(two ^ ~three) - one ^ three * ~two / three | four);
                 Assert.AreEqual(oneRow.Select(p => one - (two - three) - four - (- one - two) - (- three)).First(),
                                                    one - (two - three) - four - (- one - two) - (- three));
+                Assert.AreEqual(oneRow.Select(p => one <= (one & one)).First(),
+                                                   one <= (one & one));
                 Assert.AreEqual(oneRow.Select(p => boolArr.Contains(True == true)).First(), true);
                 Assert.AreEqual(oneRow.Select(p => !boolArr.Contains(False == true)).First(), false);
                 Assert.AreEqual(oneRow.Select(p => !boolArr.Contains(False != true)).First(), false);
@@ -375,7 +460,6 @@ namespace EntityFramework6.Npgsql.Tests
         }
 
         [Test]
-        [Category("TodoFor3.0")]
         public void DataTypes()
         {
             using (var context = new BloggingContext(ConnectionStringEF))
@@ -385,7 +469,6 @@ namespace EntityFramework6.Npgsql.Tests
                 IQueryable<int> oneRow = context.Posts.Where(p => false).Select(p => 1).Concat(new int[] { 1 });
 
                 Assert.AreEqual((byte)1, oneRow.Select(p => (byte)1).First());
-                Assert.AreEqual((sbyte)1, oneRow.Select(p => (sbyte)1).First());
                 Assert.AreEqual((short)1, oneRow.Select(p => (short)1).First());
                 Assert.AreEqual((long)1, oneRow.Select(p => (long)1).First());
                 Assert.AreEqual(1.25M, oneRow.Select(p => 1.25M).First());
@@ -400,6 +483,23 @@ namespace EntityFramework6.Npgsql.Tests
                 Assert.AreEqual(1.12e+12f, oneRow.Select(p => 1.12e+12f).First());
                 Assert.AreEqual(1.12e-12f, oneRow.Select(p => 1.12e-12f).First());
                 Assert.AreEqual((short)-32768, oneRow.Select(p => (short)-32768).First());
+                Assert.IsTrue(new byte[] { 1, 2 }.SequenceEqual(oneRow.Select(p => new byte[] { 1, 2 }).First()));
+
+                byte byteVal = 1;
+                short shortVal = -32768;
+                long longVal = 1L << 33;
+                decimal decimalVal = 1.25M;
+                double doubleVal = 1.12;
+                float floatVal = 1.22f;
+                byte[] byteArrVal = new byte[] { 1, 2 };
+
+                Assert.AreEqual(byteVal, oneRow.Select(p => byteVal).First());
+                Assert.AreEqual(shortVal, oneRow.Select(p => shortVal).First());
+                Assert.AreEqual(longVal, oneRow.Select(p => longVal).First());
+                Assert.AreEqual(decimalVal, oneRow.Select(p => decimalVal).First());
+                Assert.AreEqual(doubleVal, oneRow.Select(p => doubleVal).First());
+                Assert.AreEqual(floatVal, oneRow.Select(p => floatVal).First());
+                Assert.IsTrue(byteArrVal.SequenceEqual(oneRow.Select(p => byteArrVal).First()));
 
                 // A literal TimeSpan is written as an interval
                 Assert.AreEqual(new TimeSpan(1, 2, 3, 4), oneRow.Select(p => new TimeSpan(1, 2, 3, 4)).First());
@@ -425,6 +525,19 @@ namespace EntityFramework6.Npgsql.Tests
 
                 // String
                 Assert.AreEqual(@"a'b\c", oneRow.Select(p => @"a'b\c").First());
+            }
+        }
+
+        [Test]
+        public void SByteTest()
+        {
+            using (var context = new BloggingContext(ConnectionStringEF))
+            {
+                IQueryable<int> oneRow = context.Posts.Where(p => false).Select(p => 1).Concat(new int[] { 1 });
+
+                sbyte sbyteVal = -1;
+                Assert.AreEqual(sbyteVal, oneRow.Select(p => sbyteVal).First());
+                Assert.AreEqual((sbyte)1, oneRow.Select(p => (sbyte)1).First());
             }
         }
 
@@ -591,6 +704,53 @@ namespace EntityFramework6.Npgsql.Tests
                     // Just some really crazy query that results in an apply as well
                     context.Blogs.Select(b => new { b, b.BlogId, n = b.Posts.Select(p => new { t = p.Title + b.Name, n = p.Blog.Posts.Count(p2 => p2.BlogId < 4) }).Take(2) }).ToArray();
                 }
+            }
+        }
+
+        [Test]
+        public void TestScalarValuedStoredFunctions()
+        {
+            using (var context = new BloggingContext(ConnectionStringEF))
+            {
+                context.Database.Log = Console.Out.WriteLine;
+
+                // Try to call stored function using ESQL
+                var directCallQuery = ((IObjectContextAdapter)context).ObjectContext.CreateQuery<int>(
+                    "SELECT VALUE BloggingContext.ClrStoredAddFunction(@p1, @p2) FROM {1}",
+                    new ObjectParameter("p1", 1),
+                    new ObjectParameter("p2", 10)
+                    );
+                var directSQL = directCallQuery.ToTraceString();
+                var directCallResult = directCallQuery.First();
+
+                // Add some data and query it back using Stored Function
+                var blog = new Blog
+                {
+                    Name = "Some blog name",
+                    Posts = new List<Post>()
+                };
+                for (int i = 0; i < 5; i++)
+                    blog.Posts.Add(new Post()
+                    {
+                        Content = "Some post content " + i,
+                        Rating = (byte)i,
+                        Title = "Some post Title " + i
+                    });
+                context.Blogs.Add(blog);
+                context.NoColumnsEntities.Add(new NoColumnsEntity());
+                context.SaveChanges();
+
+                // Query back
+                var modifiedIds = context.Posts
+                    .Select(x => new { Id = x.PostId, Changed = BloggingContext.StoredAddFunction(x.PostId, 100) })
+                    .ToList();
+                var localChangedIds = modifiedIds.Select(x => x.Id + 100).ToList();
+                var remoteChangedIds = modifiedIds.Select(x => x.Changed).ToList();
+
+                // Comapre results
+                Assert.AreEqual(directCallResult, 11);
+                Assert.IsTrue(directSQL.Contains("\"dbo\".\"StoredAddFunction\""));
+                CollectionAssert.AreEqual(localChangedIds, remoteChangedIds);
             }
         }
     }

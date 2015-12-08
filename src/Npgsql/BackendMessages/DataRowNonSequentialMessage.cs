@@ -25,8 +25,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.IO;
-using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Npgsql.BackendMessages
@@ -81,7 +80,7 @@ namespace Npgsql.BackendMessages
             return Buffer.EnsureAsync(_endOffset - Buffer.ReadPosition);
         }
 
-        internal override Task SeekToColumnAsync(int column)
+        internal override Task SeekToColumnAsync(int column, CancellationToken cancellationToken)
         {
             SeekToColumn(column);
             return PGUtil.CompletedTask;
@@ -120,7 +119,7 @@ namespace Npgsql.BackendMessages
             }
         }
 
-        internal override Task ConsumeAsync()
+        internal override Task ConsumeAsync(CancellationToken cancellationToken)
         {
             Consume();
             return PGUtil.CompletedTask;

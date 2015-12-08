@@ -1,30 +1,25 @@
-// CommandTests.cs created with MonoDevelop
-// User: fxjr at 11:40 PM 4/9/2008
+#region License
+// The PostgreSQL License
 //
-// To change standard headers go to Edit->Preferences->Coding->Standard Headers
+// Copyright (C) 2015 The Npgsql Development Team
 //
-// created on 30/11/2002 at 22:35
+// Permission to use, copy, modify, and distribute this software and its
+// documentation for any purpose, without fee, and without a written
+// agreement is hereby granted, provided that the above copyright notice
+// and this paragraph and the following two paragraphs appear in all copies.
 //
-// Author:
-//     Francisco Figueiredo Jr. <fxjrlists@yahoo.com>
+// IN NO EVENT SHALL THE NPGSQL DEVELOPMENT TEAM BE LIABLE TO ANY PARTY
+// FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+// INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+// DOCUMENTATION, EVEN IF THE NPGSQL DEVELOPMENT TEAM HAS BEEN ADVISED OF
+// THE POSSIBILITY OF SUCH DAMAGE.
 //
-//    Copyright (C) 2002 The Npgsql Development Team
-//    npgsql-general@gborg.postgresql.org
-//    http://gborg.postgresql.org/project/npgsql/projdisplay.php
-//
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-//
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+// THE NPGSQL DEVELOPMENT TEAM SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
+// ON AN "AS IS" BASIS, AND THE NPGSQL DEVELOPMENT TEAM HAS NO OBLIGATIONS
+// TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#endregion
 
 using System;
 using System.Collections;
@@ -43,6 +38,7 @@ using System.Resources;
 using System.Threading;
 using System.Reflection;
 using System.Text;
+using Npgsql.Logging;
 using NUnit.Framework.Constraints;
 
 namespace Npgsql.Tests
@@ -139,6 +135,7 @@ namespace Npgsql.Tests
         [Test]
         public void TimeoutFromConnectionString()
         {
+            Assert.That(NpgsqlConnector.MinimumInternalCommandTimeout, Is.Not.EqualTo(NpgsqlCommand.DefaultTimeout));
             var timeout = NpgsqlConnector.MinimumInternalCommandTimeout;
             int connId;
             using (var conn = new NpgsqlConnection(ConnectionString + ";CommandTimeout=" + timeout))
@@ -403,6 +400,36 @@ namespace Npgsql.Tests
 
                 command.CommandText = "close te;";
                 command.ExecuteNonQuery();
+            }
+        }
+
+        #endregion
+
+        #region CommandBehavior.CloseConnection
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/693")]
+        public void CloseConnection()
+        {
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                conn.Open();
+                using (var cmd = new NpgsqlCommand("SELECT 1", conn))
+                using (var reader = cmd.ExecuteReader(CommandBehavior.CloseConnection))
+                    while (reader.Read()) {}
+                Assert.That(conn.State, Is.EqualTo(ConnectionState.Closed));
+            }
+        }
+
+        [Test]
+        public void CloseConnectionWithException()
+        {
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                conn.Open();
+                using (var cmd = new NpgsqlCommand("SE", conn))
+                    Assert.That(() => cmd.ExecuteReader(CommandBehavior.CloseConnection), Throws.Exception);
+                Assert.That(conn.State, Is.EqualTo(ConnectionState.Closed));
             }
         }
 
@@ -914,6 +941,62 @@ namespace Npgsql.Tests
             cmd2.Dispose();
             reader.Close();
             Assert.That(ExecuteScalar("SELECT COUNT(*) FROM pg_prepared_statements"), Is.EqualTo(0));
+        }
+
+        [Test]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/400")]
+        public void ExceptionThrownFromExecuteQuery([Values(PrepareOrNot.Prepared, PrepareOrNot.NotPrepared)] PrepareOrNot prepare)
+        {
+            ExecuteNonQuery(@"
+                 CREATE OR REPLACE FUNCTION emit_exception() RETURNS VOID AS
+                    'BEGIN RAISE EXCEPTION ''testexception'' USING ERRCODE = ''12345''; END;'
+                 LANGUAGE 'plpgsql';
+            ");
+
+            using (var cmd = new NpgsqlCommand("SELECT emit_exception()", Conn))
+            {
+                if (prepare == PrepareOrNot.Prepared)
+                    cmd.Prepare();
+                Assert.That(() => cmd.ExecuteReader(), Throws.Exception.TypeOf<NpgsqlException>());
+            }
+        }
+
+        [Test, IssueLink("https://github.com/npgsql/npgsql/issues/831")]
+        [Timeout(10000)]
+        public void ManyParameters()
+        {
+            using (var cmd = new NpgsqlCommand("SELECT 1", Conn))
+            {
+                for (var i = 0; i < Conn.BufferSize; i++)
+                    cmd.Parameters.Add(new NpgsqlParameter("p" + i, 8));
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        [Test, Description("Bypasses PostgreSQL's int16 limitation on the number of parameters")]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/831")]
+        [IssueLink("https://github.com/npgsql/npgsql/issues/858")]
+        [Timeout(10000)]
+        public void TooManyParameters()
+        {
+            using (var cmd = new NpgsqlCommand { Connection = Conn })
+            {
+                var sb = new StringBuilder("SELECT ");
+                for (var i = 0; i < 65536; i++)
+                {
+                    var paramName = "p" + i;
+                    cmd.Parameters.Add(new NpgsqlParameter(paramName, 8));
+                    if (i > 0)
+                        sb.Append(", ");
+                    sb.Append('@');
+                    sb.Append(paramName);
+                }
+                cmd.CommandText = sb.ToString();
+                Assert.That(() => cmd.ExecuteNonQuery(), Throws.Exception
+                    .InstanceOf<Exception>()
+                    .With.Message.EqualTo("A command cannot have more than 65535 parameters")
+                );
+            }
         }
 
         public CommandTests(string backendVersion) : base(backendVersion) { }

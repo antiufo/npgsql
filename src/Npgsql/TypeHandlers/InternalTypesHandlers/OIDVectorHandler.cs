@@ -41,9 +41,10 @@ namespace Npgsql.TypeHandlers.InternalTypesHandlers
     {
         static readonly NpgsqlLogger Log = NpgsqlLogManager.GetCurrentClassLogger();
 
-        public OIDVectorHandler(TypeHandlerRegistry registry) : base(new UInt32Handler())
+        public OIDVectorHandler(TypeHandlerRegistry registry) : base(new UInt32Handler { PgName = "oid" })
         {
-            // TODO: We assume here that the oid type comes before oidvector
+            // The pg_type SQL query makes sure that the oid type comes before oidvector, so we can
+            // depend on it already being in the registry
             var oidHandler = registry[NpgsqlDbType.Oid];
             if (oidHandler == registry.UnrecognizedTypeHandler)
             {

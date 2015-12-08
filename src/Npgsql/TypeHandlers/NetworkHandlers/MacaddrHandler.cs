@@ -37,30 +37,24 @@ namespace Npgsql.TypeHandlers.NetworkHandlers
     /// http://www.postgresql.org/docs/current/static/datatype-net-types.html
     /// </remarks>
     [TypeMapping("macaddr", NpgsqlDbType.MacAddr, typeof(PhysicalAddress))]
-    internal class MacaddrHandler : TypeHandler<PhysicalAddress>,
-        ISimpleTypeReader<PhysicalAddress>, ISimpleTypeWriter,
-        ISimpleTypeReader<string>
+    internal class MacaddrHandler : SimpleTypeHandler<PhysicalAddress>, ISimpleTypeHandler<string>
     {
-        byte[] _bytes;
-
-        public PhysicalAddress Read(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
+        public override PhysicalAddress Read(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
         {
             Contract.Assume(len == 6);
 
-            if (_bytes == null) {
-                _bytes = new byte[6];
-            }
+            var bytes = new byte[6];
 
-            buf.ReadBytes(_bytes, 0, 6);
-            return new PhysicalAddress(_bytes);
+            buf.ReadBytes(bytes, 0, 6);
+            return new PhysicalAddress(bytes);
         }
 
-        string ISimpleTypeReader<string>.Read(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
+        string ISimpleTypeHandler<string>.Read(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
         {
             return Read(buf, len, fieldDescription).ToString();
         }
 
-        public int ValidateAndGetLength(object value, NpgsqlParameter parameter)
+        public override int ValidateAndGetLength(object value, NpgsqlParameter parameter)
         {
             var address = value as PhysicalAddress;
             if (address == null)
@@ -70,7 +64,7 @@ namespace Npgsql.TypeHandlers.NetworkHandlers
             return 6;
         }
 
-        public void Write(object value, NpgsqlBuffer buf, NpgsqlParameter parameter)
+        public override void Write(object value, NpgsqlBuffer buf, NpgsqlParameter parameter)
         {
             buf.WriteBytes(((PhysicalAddress)value).GetAddressBytes(), 0, 6);
         }
