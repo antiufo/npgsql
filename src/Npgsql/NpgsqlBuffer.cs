@@ -22,15 +22,11 @@
 #endregion
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using AsyncRewriter;
 
 namespace Npgsql
@@ -40,18 +36,38 @@ namespace Npgsql
         #region Fields and Properties
 
         internal Stream Underlying { get; set; }
-        internal int Size { get; private set; }
-        internal Encoding TextEncoding { get; private set; }
+        /// <summary>
+        /// The total byte length of the buffer.
+        /// </summary>
+        internal int Size { get; }
+
+        /// <summary>
+        /// During copy operations, the buffer's usable size is smaller than its total size because of the CopyData
+        /// message header. This distinction is important since some type handlers check how much space is left
+        /// in the buffer in their decision making.
+        /// </summary>
+        internal int UsableSize
+        {
+            get { return _usableSize; }
+            set
+            {
+                Contract.Requires(value <= Size);
+                _usableSize = value;
+            }
+        }
+
+        int _usableSize;
+        internal Encoding TextEncoding { get; }
 
         internal int ReadPosition { get; private set; }
-        internal int ReadBytesLeft { get { return _filledBytes - ReadPosition; } }
+        internal int ReadBytesLeft => _filledBytes - ReadPosition;
 
         internal int WritePosition { get { return _writePosition; } set { _writePosition = value; } }
-        internal int WriteSpaceLeft { get { return Size - _writePosition; } }
+        internal int WriteSpaceLeft => Size - _writePosition;
 
         internal long TotalBytesFlushed { get; private set; }
 
-        internal byte[] _buf;
+        internal readonly byte[] _buf;
         int _filledBytes;
         readonly Decoder _textDecoder;
         readonly Encoder _textEncoder;
@@ -65,7 +81,7 @@ namespace Npgsql
         /// </summary>
         readonly char[] _tempCharBuf;
 
-        BitConverterUnion _bitConverterUnion = new BitConverterUnion();
+        BitConverterUnion _bitConverterUnion;
 
         /// <summary>
         /// The minimum buffer size possible.
@@ -77,18 +93,16 @@ namespace Npgsql
 
         #region Constructors
 
-        internal NpgsqlBuffer(Stream underlying)
-            : this(underlying, DefaultBufferSize, PGUtil.UTF8Encoding) {}
-
         internal NpgsqlBuffer(Stream underlying, int size, Encoding textEncoding)
         {
             if (size < MinimumBufferSize) {
-                throw new ArgumentOutOfRangeException("size", size, "Buffer size must be at least " + MinimumBufferSize);
+                throw new ArgumentOutOfRangeException(nameof(size), size, "Buffer size must be at least " + MinimumBufferSize);
             }
             Contract.EndContractBlock();
 
             Underlying = underlying;
             Size = size;
+            UsableSize = Size;
             _buf = new byte[Size];
             TextEncoding = textEncoding;
             _textDecoder = TextEncoding.GetDecoder();
@@ -590,7 +604,7 @@ namespace Npgsql
                 case SeekOrigin.End:
                     throw new NotImplementedException();
                 default:
-                    throw new ArgumentOutOfRangeException("origin");
+                    throw new ArgumentOutOfRangeException(nameof(origin));
             }
             Contract.Assert(absoluteOffset >= 0 && absoluteOffset <= _filledBytes);
 

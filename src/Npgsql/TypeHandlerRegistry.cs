@@ -59,7 +59,7 @@ namespace Npgsql
         Dictionary<Type, TypeHandler> _arrayHandlerByType;
         List<BackendType> _backendTypes;
 
-        static internal readonly Dictionary<string, TypeAndMapping> HandlerTypes;
+        internal static readonly Dictionary<string, TypeAndMapping> HandlerTypes;
         static readonly Dictionary<NpgsqlDbType, DbType> NpgsqlDbTypeToDbType;
         static readonly Dictionary<DbType, NpgsqlDbType> DbTypeToNpgsqlDbType;
         static readonly Dictionary<Type, NpgsqlDbType> TypeToNpgsqlDbType;
@@ -73,8 +73,11 @@ namespace Npgsql
         /// </summary>
         static readonly ConcurrentDictionary<string, List<BackendType>> BackendTypeCache = new ConcurrentDictionary<string, List<BackendType>>();
 
-        static ConcurrentDictionary<string, TypeHandler> _globalEnumRegistrations;
-        static ConcurrentDictionary<string, TypeHandler> _globalCompositeRegistrations;
+        static readonly ConcurrentDictionary<string, TypeHandler> _globalEnumMappings;
+        static readonly ConcurrentDictionary<string, TypeHandler> _globalCompositeMappings;
+
+        internal static IDictionary<string, TypeHandler> GlobalEnumMappings => _globalEnumMappings;
+        internal static IDictionary<string, TypeHandler> GlobalCompositeMappings => _globalCompositeMappings;
 
         static readonly NpgsqlLogger Log = NpgsqlLogManager.GetCurrentClassLogger();
 
@@ -83,7 +86,7 @@ namespace Npgsql
         #region Initialization and Loading
 
         [RewriteAsync]
-        static internal void Setup(NpgsqlConnector connector, NpgsqlTimeout timeout)
+        internal static void Setup(NpgsqlConnector connector, NpgsqlTimeout timeout)
         {
             connector.TypeHandlerRegistry = new TypeHandlerRegistry(connector);
 
@@ -174,7 +177,8 @@ namespace Npgsql
                             elementOID = Convert.ToUInt32(dr[4]);
                             Contract.Assume(elementOID > 0);
                             if (!byOID.TryGetValue(elementOID, out backendType.Element)) {
-                                Log.Trace(string.Format("Array type '{0}' refers to unknown element with OID {1}, skipping", backendType.Name, elementOID), connector.Id);
+                                Log.Trace(
+                                    $"Array type '{backendType.Name}' refers to unknown element with OID {elementOID}, skipping", connector.Id);
                                 continue;
                             }
                             backendType.Element.Array = backendType;
@@ -187,7 +191,8 @@ namespace Npgsql
                             elementOID = Convert.ToUInt32(dr[4]);
                             Contract.Assume(elementOID > 0);
                             if (!byOID.TryGetValue(elementOID, out backendType.Element)) {
-                                Log.Error(String.Format("Range type '{0}' refers to unknown subtype with OID {1}, skipping", backendType.Name, elementOID), connector.Id);
+                                Log.Error(
+                                    $"Range type '{backendType.Name}' refers to unknown subtype with OID {elementOID}, skipping", connector.Id);
                                 continue;
                             }
                             break;
@@ -201,7 +206,8 @@ namespace Npgsql
                             backendType.Type = BackendTypeType.Base;
                             break;
                         default:
-                            throw new ArgumentOutOfRangeException(String.Format("Unknown typtype for type '{0}' in pg_type: {1}", backendType.Name, typeChar));
+                            throw new ArgumentOutOfRangeException(
+                                $"Unknown typtype for type '{backendType.Name}' in pg_type: {typeChar}");
                         }
 
                         types.Add(backendType);
@@ -226,25 +232,37 @@ namespace Npgsql
                     switch (backendType.Type)
                     {
                     case BackendTypeType.Base:
-                        RegisterBaseType(backendType);
+                        TypeAndMapping typeAndMapping;
+                        // Types whose names aren't in HandlerTypes aren't supported by Npgql, skip them
+                        if (HandlerTypes.TryGetValue(backendType.Name, out typeAndMapping)) {
+                            RegisterBaseType(backendType.Name, backendType.OID, typeAndMapping.HandlerType, typeAndMapping.Mapping);
+                        }
                         continue;
+
                     case BackendTypeType.Array:
                         RegisterArrayType(backendType);
                         continue;
+
                     case BackendTypeType.Range:
                         RegisterRangeType(backendType);
                         continue;
+
                     case BackendTypeType.Enum:
                         TypeHandler handler;
-                        if (_globalEnumRegistrations != null &&
-                            _globalEnumRegistrations.TryGetValue(backendType.Name, out handler))
+                        if (_globalEnumMappings.TryGetValue(backendType.Name, out handler))
                         {
                             ActivateEnumType(handler, backendType);
                         }
+                        else
+                        {
+                            // Unregistered enum, register as text
+                            RegisterBaseType(backendType.Name, backendType.OID, typeof(TextHandler), new TypeMappingAttribute(backendType.Name));
+                        }
                         continue;
+
                     case BackendTypeType.Composite:
-                        if (_globalCompositeRegistrations != null &&
-                            _globalCompositeRegistrations.TryGetValue(backendType.Name, out handler))
+                        if (_globalCompositeMappings != null &&
+                            _globalCompositeMappings.TryGetValue(backendType.Name, out handler))
                         {
                             ActivateCompositeType(handler, backendType);
                         }
@@ -264,17 +282,8 @@ namespace Npgsql
             _backendTypes = backendTypes;
         }
 
-        void RegisterBaseType(BackendType backendType)
+        void RegisterBaseType(string name, uint oid, Type handlerType, TypeMappingAttribute mapping)
         {
-            TypeAndMapping typeAndMapping;
-            if (!HandlerTypes.TryGetValue(backendType.Name, out typeAndMapping)) {
-                // Backend type not supported by Npgsql
-                return;
-            }
-
-            var handlerType = typeAndMapping.HandlerType;
-            var mapping = typeAndMapping.Mapping;
-
             // Instantiate the type handler. If it has a constructor that accepts an NpgsqlConnector, use that to allow
             // the handler to make connector-specific adjustments. Otherwise (the normal case), use the default constructor.
             var handler = (TypeHandler)(
@@ -283,16 +292,16 @@ namespace Npgsql
                     : Activator.CreateInstance(handlerType)
             );
 
-            handler.OID = backendType.OID;
-            OIDIndex[backendType.OID] = handler;
-            handler.PgName = backendType.Name;
+            handler.OID = oid;
+            OIDIndex[oid] = handler;
+            handler.PgName = name;
 
             if (mapping.NpgsqlDbType.HasValue)
             {
                 var npgsqlDbType = mapping.NpgsqlDbType.Value;
                 if (_byNpgsqlDbType.ContainsKey(npgsqlDbType))
-                    throw new Exception(String.Format("Two type handlers registered on same NpgsqlDbType {0}: {1} and {2}",
-                                        npgsqlDbType, _byNpgsqlDbType[npgsqlDbType].GetType().Name, handlerType.Name));
+                    throw new Exception(
+                        $"Two type handlers registered on same NpgsqlDbType {npgsqlDbType}: {_byNpgsqlDbType[npgsqlDbType].GetType().Name} and {handlerType.Name}");
                 _byNpgsqlDbType[npgsqlDbType] = handler;
                 handler.NpgsqlDbType = npgsqlDbType;
             }
@@ -300,16 +309,16 @@ namespace Npgsql
             foreach (var dbType in mapping.DbTypes)
             {
                 if (_byDbType.ContainsKey(dbType))
-                    throw new Exception(String.Format("Two type handlers registered on same DbType {0}: {1} and {2}",
-                                        dbType, _byDbType[dbType].GetType().Name, handlerType.Name));
+                    throw new Exception(
+                        $"Two type handlers registered on same DbType {dbType}: {_byDbType[dbType].GetType().Name} and {handlerType.Name}");
                 _byDbType[dbType] = handler;
             }
 
             foreach (var type in mapping.Types)
             {
                 if (_byType.ContainsKey(type))
-                    throw new Exception(String.Format("Two type handlers registered on same .NET type {0}: {1} and {2}",
-                                        type, _byType[type].GetType().Name, handlerType.Name));
+                    throw new Exception(
+                        $"Two type handlers registered on same .NET type {type}: {_byType[type].GetType().Name} and {handlerType.Name}");
                 _byType[type] = handler;
             }
         }
@@ -342,7 +351,7 @@ namespace Npgsql
                 arrayHandler = (TypeHandler)Activator.CreateInstance(arrayHandlerType, elementHandler);
             }
 
-            arrayHandler.PgName = "array";
+            arrayHandler.PgName = backendType.Name;
             arrayHandler.OID = backendType.OID;
             OIDIndex[backendType.OID] = arrayHandler;
 
@@ -352,7 +361,7 @@ namespace Npgsql
                 if (_arrayHandlerByType == null) {
                     _arrayHandlerByType = new Dictionary<Type, TypeHandler>();
                 }
-                _arrayHandlerByType[asEnumHandler.ClrType] = arrayHandler;
+                _arrayHandlerByType[asEnumHandler.EnumType] = arrayHandler;
                 return;
             }
 
@@ -362,7 +371,7 @@ namespace Npgsql
                 if (_arrayHandlerByType == null) {
                     _arrayHandlerByType = new Dictionary<Type, TypeHandler>();
                 }
-                _arrayHandlerByType[asCompositeHandler.ClrType] = arrayHandler;
+                _arrayHandlerByType[asCompositeHandler.CompositeType] = arrayHandler;
                 return;
             }
 
@@ -402,27 +411,23 @@ namespace Npgsql
         {
             var backendTypeInfo = _backendTypes.FirstOrDefault(t => t.Name == pgName);
             if (backendTypeInfo == null) {
-                throw new Exception(String.Format("An enum with the name {0} was not found in the database", pgName));
+                throw new Exception($"An enum with the name {pgName} was not found in the database");
             }
 
             var handler = new EnumHandler<TEnum>();
             ActivateEnumType(handler, backendTypeInfo);
         }
 
-        internal static void RegisterEnumTypeGlobally<TEnum>(string pgName) where TEnum : struct
+        internal static void MapEnumTypeGlobally<TEnum>(string pgName) where TEnum : struct
         {
-            if (_globalEnumRegistrations == null) {
-                _globalEnumRegistrations = new ConcurrentDictionary<string, TypeHandler>();
-            }
-
-            _globalEnumRegistrations[pgName] = new EnumHandler<TEnum>();
+            _globalEnumMappings[pgName] = new EnumHandler<TEnum>();
         }
 
         void ActivateEnumType(TypeHandler handler, BackendType backendType)
         {
             if (backendType.Type != BackendTypeType.Enum)
-                throw new InvalidOperationException(string.Format("Trying to activate backend type {0} of as enum but is of type {1}",
-                                                    backendType.Name, backendType.Type));
+                throw new InvalidOperationException(
+                    $"Trying to activate backend type {backendType.Name} of as enum but is of type {backendType.Type}");
 
             handler.PgName = backendType.Name;
             handler.OID = backendType.OID;
@@ -435,37 +440,41 @@ namespace Npgsql
             }
         }
 
+        internal static void UnregisterEnumTypeGlobally<TEnum>() where TEnum : struct
+        {
+            var pgName = _globalEnumMappings
+                .Single(kv => kv.Value is EnumHandler<TEnum>)
+                .Key;
+            TypeHandler _;
+            _globalEnumMappings.TryRemove(pgName, out _);
+        }
+
         #endregion
 
         #region Composite
 
-        internal void RegisterCompositeType<T>(string pgName) where T : new()
+        internal void MapCompositeType<T>(string pgName) where T : new()
         {
             var backendTypeInfo = _backendTypes.FirstOrDefault(t => t.Name == pgName);
             if (backendTypeInfo == null)
             {
-                throw new Exception(String.Format("A composite with the name {0} was not found in the database", pgName));
+                throw new Exception($"A composite with the name {pgName} was not found in the database");
             }
 
             var handler = new CompositeHandler<T>();
             ActivateCompositeType(handler, backendTypeInfo);
         }
 
-        internal static void RegisterCompositeTypeGlobally<T>(string pgName) where T : new()
+        internal static void MapCompositeTypeGlobally<T>(string pgName) where T : new()
         {
-            if (_globalCompositeRegistrations == null)
-            {
-                _globalCompositeRegistrations = new ConcurrentDictionary<string, TypeHandler>();
-            }
-
-            _globalCompositeRegistrations[pgName] = new CompositeHandler<T>();
+            _globalCompositeMappings[pgName] = new CompositeHandler<T>();
         }
 
         void ActivateCompositeType(TypeHandler templateHandler, BackendType backendType)
         {
             if (backendType.Type != BackendTypeType.Composite)
-                throw new InvalidOperationException(string.Format("Trying to activate backend type {0} of as composite but is of type {1}",
-                                                    backendType.Name, backendType.Type));
+                throw new InvalidOperationException(
+                    $"Trying to activate backend type {backendType.Name} of as composite but is of type {backendType.Type}");
 
             // The handler we've received is a global one, effectively serving as a "template".
             // Clone it here to get an instance for our connector
@@ -483,7 +492,8 @@ namespace Npgsql
             if (fields == null)
             {
                 fields = new List<Tuple<string, uint>>();
-                using (var cmd = new NpgsqlCommand(string.Format("SELECT attname,atttypid FROM pg_attribute WHERE attrelid={0}", backendType.RelationId), Connector.Connection))
+                using (var cmd = new NpgsqlCommand(
+                    $"SELECT attname,atttypid FROM pg_attribute WHERE attrelid={backendType.RelationId}", Connector.Connection))
                 using (var reader = cmd.ExecuteReader())
                 {
                     while (reader.Read()) {
@@ -503,6 +513,12 @@ namespace Npgsql
             {
                 RegisterArrayType(backendType.Array);
             }
+        }
+
+        internal static void UnregisterCompositeTypeGlobally(string pgName)
+        {
+            TypeHandler _;
+            _globalCompositeMappings.TryRemove(pgName, out _);
         }
 
         #endregion
@@ -562,8 +578,8 @@ namespace Npgsql
                 {
                     throw new ArgumentException("specificType can only be set if NpgsqlDbType is set to Enum or Composite");
                 }
-                throw new NotSupportedException(string.Format("The CLR type {0} must be registered with Npgsql before usage, please refer to the documentation",
-                                                specificType.Name));
+                throw new NotSupportedException(
+                    $"The CLR type {specificType.Name} must be registered with Npgsql before usage, please refer to the documentation");
             }
         }
 
@@ -649,21 +665,28 @@ namespace Npgsql
 
                     if (arrayElementType.GetTypeInfo().IsEnum)
                     {
-                        throw new NotSupportedException(string.Format("The CLR enum type {0} must be registered with Npgsql before usage, please refer to the documentation.",
-                                                        arrayElementType.Name));
+                        throw new NotSupportedException(
+                            $"The CLR enum type {arrayElementType.Name} must be registered with Npgsql before usage, please refer to the documentation.");
                     }
 
-                    throw new NotSupportedException(string.Format("The CLR type {0} isn't supported by Npgsql or your PostgreSQL. " +
-                                                                  "If you wish to map it to a PostgreSQL composite type you need to register it before usage, please refer to the documentation.",
-                                                                  arrayElementType));
+                    throw new NotSupportedException(
+                        $"The CLR type {arrayElementType} isn't supported by Npgsql or your PostgreSQL. " +
+                        "If you wish to map it to a PostgreSQL composite type you need to register it before usage, please refer to the documentation.");
                 }
 
-                if (type.IsEnum) {
-                    throw new NotSupportedException(string.Format("The CLR enum type {0} must be registered with Npgsql before usage, please refer to the documentation.",
-                                                    type.Name));
+                // Only errors from here
+
+                if (type.GetTypeInfo().IsEnum) {
+                    throw new NotSupportedException(
+                        $"The CLR enum type {type.Name} must be registered with Npgsql before usage, please refer to the documentation.");
                 }
 
-                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(NpgsqlRange<>))
+                if (typeof (IEnumerable).IsAssignableFrom(type))
+                {
+                    throw new NotSupportedException($"Npgsql > 3.x removed support for writing a parameter with an IEnumerable value, use .ToList()/.ToArray() instead");
+                }
+
+                if (type.GetTypeInfo().IsGenericType && type.GetGenericTypeDefinition() == typeof(NpgsqlRange<>))
                 {
                     if (!_byType.TryGetValue(type.GetGenericArguments()[0], out handler)) {
                         throw new NotSupportedException("This .NET range type is not supported in your PostgreSQL: " + type);
@@ -671,9 +694,8 @@ namespace Npgsql
                     return this[NpgsqlDbType.Range | handler.NpgsqlDbType];
                 }
 
-                throw new NotSupportedException(string.Format("The CLR type {0} isn't supported by Npgsql or your PostgreSQL. " +
-                                                              "If you wish to map it to a PostgreSQL composite type you need to register it before usage, please refer to the documentation.",
-                                                              type));
+                throw new NotSupportedException($"The CLR type {type} isn't supported by Npgsql or your PostgreSQL. " +
+                                                "If you wish to map it to a PostgreSQL composite type you need to register it before usage, please refer to the documentation.");
             }
         }
 
@@ -682,7 +704,26 @@ namespace Npgsql
             return DbTypeToNpgsqlDbType[dbType];
         }
 
-        internal static NpgsqlDbType ToNpgsqlDbType(Type type)
+        internal static NpgsqlDbType ToNpgsqlDbType(object value)
+        {
+            if (value is DateTime)
+            {
+                return ((DateTime)value).Kind == DateTimeKind.Utc
+                    ? NpgsqlDbType.TimestampTZ
+                    : NpgsqlDbType.Timestamp;
+            }
+
+            if (value is NpgsqlDateTime)
+            {
+                return ((NpgsqlDateTime)value).Kind == DateTimeKind.Utc
+                    ? NpgsqlDbType.TimestampTZ
+                    : NpgsqlDbType.Timestamp;
+            }
+
+            return ToNpgsqlDbType(value.GetType());
+        }
+
+        static NpgsqlDbType ToNpgsqlDbType(Type type)
         {
             NpgsqlDbType npgsqlDbType;
             if (TypeToNpgsqlDbType.TryGetValue(type, out npgsqlDbType)) {
@@ -733,15 +774,18 @@ namespace Npgsql
 
         static TypeHandlerRegistry()
         {
+            _globalEnumMappings = new ConcurrentDictionary<string, TypeHandler>();
+            _globalCompositeMappings = new ConcurrentDictionary<string, TypeHandler>();
+
             HandlerTypes = new Dictionary<string, TypeAndMapping>();
             NpgsqlDbTypeToDbType = new Dictionary<NpgsqlDbType, DbType>();
             DbTypeToNpgsqlDbType = new Dictionary<DbType, NpgsqlDbType>();
             TypeToNpgsqlDbType = new Dictionary<Type, NpgsqlDbType>();
             TypeToDbType = new Dictionary<Type, DbType>();
 
-            foreach (var t in Assembly.GetExecutingAssembly().GetTypes().Where(t => t.IsSubclassOf(typeof(TypeHandler))))
+            foreach (var t in typeof(TypeHandlerRegistry).GetTypeInfo().Assembly.GetTypes().Where(t => t.GetTypeInfo().IsSubclassOf(typeof(TypeHandler))))
             {
-                var mappings = t.GetCustomAttributes(typeof(TypeMappingAttribute), false);
+                var mappings = t.GetTypeInfo().GetCustomAttributes(typeof(TypeMappingAttribute), false);
                 if (!mappings.Any())
                     continue;
 

@@ -26,15 +26,16 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Data.Common;
-using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics.Contracts;
+using System.Globalization;
 using System.Net.Sockets;
 using AsyncRewriter;
+using JetBrains.Annotations;
 using Npgsql.BackendMessages;
 using Npgsql.FrontendMessages;
 using Npgsql.Logging;
@@ -48,9 +49,10 @@ namespace Npgsql
 #if WITHDESIGN
     [System.Drawing.ToolboxBitmapAttribute(typeof(NpgsqlCommand)), ToolboxItem(true)]
 #endif
-#if DNXCORE50
+#if DNXCORE50 || DOTNET
     public sealed partial class NpgsqlCommand : DbCommand
 #else
+    // ReSharper disable once RedundantNameQualifier
     [System.ComponentModel.DesignerCategory("")]
     public sealed partial class NpgsqlCommand : DbCommand, ICloneable
 #endif
@@ -109,20 +111,22 @@ namespace Npgsql
         /// <summary>
         /// Initializes a new instance of the <see cref="NpgsqlCommand">NpgsqlCommand</see> class.
         /// </summary>
-        public NpgsqlCommand() : this(String.Empty, null, null) {}
+        public NpgsqlCommand() : this(string.Empty, null, null) {}
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NpgsqlCommand">NpgsqlCommand</see> class with the text of the query.
         /// </summary>
         /// <param name="cmdText">The text of the query.</param>
-        public NpgsqlCommand(String cmdText) : this(cmdText, null, null) {}
+        // ReSharper disable once IntroduceOptionalParameters.Global
+        public NpgsqlCommand(string cmdText) : this(cmdText, null, null) {}
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NpgsqlCommand">NpgsqlCommand</see> class with the text of the query and a <see cref="NpgsqlConnection">NpgsqlConnection</see>.
         /// </summary>
         /// <param name="cmdText">The text of the query.</param>
         /// <param name="connection">A <see cref="NpgsqlConnection">NpgsqlConnection</see> that represents the connection to a PostgreSQL server.</param>
-        public NpgsqlCommand(String cmdText, NpgsqlConnection connection) : this(cmdText, connection, null) {}
+        // ReSharper disable once IntroduceOptionalParameters.Global
+        public NpgsqlCommand(string cmdText, NpgsqlConnection connection) : this(cmdText, connection, null) {}
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NpgsqlCommand">NpgsqlCommand</see> class with the text of the query, a <see cref="NpgsqlConnection">NpgsqlConnection</see>, and the <see cref="NpgsqlTransaction">NpgsqlTransaction</see>.
@@ -130,7 +134,7 @@ namespace Npgsql
         /// <param name="cmdText">The text of the query.</param>
         /// <param name="connection">A <see cref="NpgsqlConnection">NpgsqlConnection</see> that represents the connection to a PostgreSQL server.</param>
         /// <param name="transaction">The <see cref="NpgsqlTransaction">NpgsqlTransaction</see> in which the <see cref="NpgsqlCommand">NpgsqlCommand</see> executes.</param>
-        public NpgsqlCommand(string cmdText, NpgsqlConnection connection, NpgsqlTransaction transaction)
+        public NpgsqlCommand(string cmdText, [CanBeNull] NpgsqlConnection connection, [CanBeNull] NpgsqlTransaction transaction)
         {
             Init(cmdText);
             Connection = connection;
@@ -153,15 +157,16 @@ namespace Npgsql
         /// </summary>
         /// <value>The Transact-SQL statement or stored procedure to execute. The default is an empty string.</value>
         [DefaultValue("")]
-#if !DNXCORE50
         [Category("Data")]
-#endif
-        public override String CommandText
+        public override string CommandText
         {
             get { return _commandText; }
             set
             {
-                // [TODO] Validate commandtext.
+                if (value == null)
+                    throw new ArgumentNullException(nameof(value));
+                Contract.EndContractBlock();
+
                 _commandText = value;
                 DeallocatePrepared();
             }
@@ -176,16 +181,12 @@ namespace Npgsql
         {
             get
             {
-                return _timeout ?? (
-                    _connection != null
-                      ? _connection.CommandTimeout
-                      : DefaultTimeout
-                );
+                return _timeout ?? (_connection?.CommandTimeout ?? DefaultTimeout);
             }
             set
             {
                 if (value < 0) {
-                    throw new ArgumentOutOfRangeException("value", value, "CommandTimeout can't be less than zero.");
+                    throw new ArgumentOutOfRangeException(nameof(value), value, "CommandTimeout can't be less than zero.");
                 }
 
                 _timeout = value;
@@ -198,9 +199,7 @@ namespace Npgsql
         /// </summary>
         /// <value>One of the <see cref="System.Data.CommandType">CommandType</see> values. The default is <see cref="System.Data.CommandType">CommandType.Text</see>.</value>
         [DefaultValue(CommandType.Text)]
-#if !DNXCORE50
         [Category("Data")]
-#endif
         public override CommandType CommandType { get; set; }
 
         /// <summary>
@@ -218,9 +217,7 @@ namespace Npgsql
         /// </summary>
         /// <value>The connection to a data source. The default value is a null reference.</value>
         [DefaultValue(null)]
-#if !DNXCORE50
         [Category("Behavior")]
-#endif
         public new NpgsqlConnection Connection
         {
             get { return _connection; }
@@ -260,9 +257,7 @@ namespace Npgsql
         /// method of the <see cref="System.Data.Common.DbDataAdapter">DbDataAdapter</see>.
         /// </summary>
         /// <value>One of the <see cref="System.Data.UpdateRowSource">UpdateRowSource</see> values.</value>
-#if WITHDESIGN
         [Category("Behavior"), DefaultValue(UpdateRowSource.Both)]
-#endif
         public override UpdateRowSource UpdatedRowSource
         {
             get { return _updateRowSource; }
@@ -321,7 +316,7 @@ namespace Npgsql
         /// </summary>
         public bool AllResultTypesAreUnknown
         {
-            get { return _allResultTypesAreUnknown; }
+            private get { return _allResultTypesAreUnknown; }
             set
             {
                 // TODO: Check that this isn't modified after calling prepare
@@ -346,7 +341,7 @@ namespace Npgsql
         /// </remarks>
         public bool[] UnknownResultTypeList
         {
-            get { return _unknownResultTypeList; }
+            private get { return _unknownResultTypeList; }
             set
             {
                 // TODO: Check that this isn't modified after calling prepare
@@ -380,7 +375,7 @@ namespace Npgsql
         /// </summary>
         internal CommandState State
         {
-            get { return (CommandState)_state; }
+            private get { return (CommandState)_state; }
             set
             {
                 var newState = (int)value;
@@ -415,10 +410,7 @@ namespace Npgsql
         /// <summary>
         /// DB parameter collection.
         /// </summary>
-        protected override DbParameterCollection DbParameterCollection
-        {
-            get { return Parameters; }
-        }
+        protected override DbParameterCollection DbParameterCollection => Parameters;
 
         /// <summary>
         /// Gets the <see cref="NpgsqlParameterCollection">NpgsqlParameterCollection</see>.
@@ -428,7 +420,7 @@ namespace Npgsql
         [Category("Data"), DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
 #endif
 
-        public new NpgsqlParameterCollection Parameters { get { return _parameters; } }
+        public new NpgsqlParameterCollection Parameters => _parameters;
 
         #endregion
 
@@ -445,7 +437,7 @@ namespace Npgsql
             }
 
             _connector = Connection.Connector;
-            Log.Debug("Prepare command", _connector.Id);
+            Log.Debug("Preparing: " + CommandText, _connector.Id);
 
             using (_connector.StartUserAction())
             {
@@ -481,7 +473,7 @@ namespace Npgsql
 
                 while (true)
                 {
-                    var msg = _connector.ReadSingleMessage();
+                    var msg = _connector.ReadSingleMessage(DataRowLoadingMode.NonSequential);
                     switch (msg.Code)
                     {
                     case BackendMessageCode.CompletedResponse: // prepended messages, e.g. begin transaction
@@ -545,7 +537,7 @@ namespace Npgsql
                 bool hasWrittenFirst = false;
                 for (var i = 1; i <= numInput; i++) {
                     var param = inputList[i - 1];
-                    if (param._autoAssignedName || param.CleanName == "")
+                    if (param.AutoAssignedName || param.CleanName == "")
                     {
                         if (hasWrittenFirst)
                         {
@@ -559,7 +551,7 @@ namespace Npgsql
                 for (var i = 1; i <= numInput; i++)
                 {
                     var param = inputList[i - 1];
-                    if (!param._autoAssignedName && param.CleanName != "")
+                    if (!param.AutoAssignedName && param.CleanName != "")
                     {
                         if (hasWrittenFirst)
                         {
@@ -585,14 +577,15 @@ namespace Npgsql
 
         #region Frontend message creation
 
-        internal void ValidateAndCreateMessages(CommandBehavior behavior = CommandBehavior.Default)
+        void ValidateAndCreateMessages(CommandBehavior behavior = CommandBehavior.Default)
         {
             _connector = Connection.Connector;
+            if (Parameters.Count > 65535) {
+                throw new Exception("A command cannot have more than 65535 parameters");
+            }
             foreach (NpgsqlParameter p in Parameters.Where(p => p.IsInputDirection)) {
                 p.Bind(_connector.TypeHandlerRegistry);
-                if (p.LengthCache != null) {
-                    p.LengthCache.Clear();
-                }
+                p.LengthCache?.Clear();
                 p.ValidateAndGetLength();
             }
 
@@ -653,7 +646,6 @@ namespace Npgsql
                 _connector.AddMessage(describeMessage.Populate(StatementOrPortal.Statement));
 
                 bindMessage.Populate(
-                    _connector.TypeHandlerRegistry,
                     query.InputParameters,
                     _queries.Count == 1 ? "" : portalNames[i]
                 );
@@ -694,7 +686,7 @@ namespace Npgsql
                 }
 
                 var query = _queries[i];
-                bindMessage.Populate(_connector.TypeHandlerRegistry, query.InputParameters, "", query.PreparedStatementName);
+                bindMessage.Populate(query.InputParameters, "", query.PreparedStatementName);
                 if (AllResultTypesAreUnknown) {
                     bindMessage.AllResultTypesAreUnknown = AllResultTypesAreUnknown;
                 } else if (i == 0 && UnknownResultTypeList != null) {
@@ -736,20 +728,33 @@ namespace Npgsql
         #region Execute
 
         [RewriteAsync]
-        internal NpgsqlDataReader Execute(CommandBehavior behavior = CommandBehavior.Default)
+        NpgsqlDataReader Execute(CommandBehavior behavior = CommandBehavior.Default)
         {
+            LogCommand();
             State = CommandState.InProgress;
             try
             {
                 _queryIndex = 0;
                 _connector.SendAllMessages();
 
-                if (!IsPrepared)
+                // We consume response messages, positioning ourselves before the response of the first
+                // Execute.
+                if (IsPrepared)
+                {
+                    if ((behavior & CommandBehavior.SchemaOnly) == 0)
+                    {
+                        // No binding in SchemaOnly mode
+                        var msg = _connector.ReadSingleMessage(DataRowLoadingMode.NonSequential);
+                        Contract.Assert(msg is BindCompleteMessage);
+                    }
+                }
+                else
                 {
                     IBackendMessage msg;
                     do
                     {
-                        msg = _connector.ReadSingleMessage();
+                        msg = _connector.ReadSingleMessage(DataRowLoadingMode.NonSequential);
+                        Contract.Assert(msg != null);
                     } while (!ProcessMessageForUnprepared(msg, behavior));
                 }
 
@@ -839,14 +844,14 @@ namespace Npgsql
         int ExecuteNonQueryInternal()
         {
             Prechecks();
-            Log.Debug("ExecuteNonQuery", Connection.Connector.Id);
+            Log.Trace("ExecuteNonQuery", Connection.Connector.Id);
             using (Connection.Connector.StartUserAction())
             {
                 ValidateAndCreateMessages();
                 NpgsqlDataReader reader;
                 using (reader = Execute())
                 {
-                    while (reader.NextResult()) ;
+                    while (reader.NextResult()) {}
                 }
                 return reader.RecordsAffected;
             }
@@ -862,6 +867,7 @@ namespace Npgsql
         /// </summary>
         /// <returns>The first column of the first row in the result set,
         /// or a null reference if the result set is empty.</returns>
+        [CanBeNull]
         public override object ExecuteScalar()
         {
             return ExecuteScalarInternal();
@@ -893,10 +899,11 @@ namespace Npgsql
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         [RewriteAsync]
+        [CanBeNull]
         object ExecuteScalarInternal()
         {
             Prechecks();
-            Log.Debug("ExecuteNonScalar", Connection.Connector.Id);
+            Log.Trace("ExecuteNonScalar", Connection.Connector.Id);
             using (Connection.Connector.StartUserAction())
             {
                 var behavior = CommandBehavior.SequentialAccess | CommandBehavior.SingleRow;
@@ -952,7 +959,7 @@ namespace Npgsql
             {
                 try
                 {
-                    return await ExecuteDbDataReaderInternalAsync(cancellationToken, behavior).ConfigureAwait(false);
+                    return await ExecuteDbDataReaderInternalAsync(behavior, cancellationToken).ConfigureAwait(false);
                 }
                 catch (NpgsqlException e)
                 {
@@ -968,7 +975,6 @@ namespace Npgsql
         /// </summary>
         protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior)
         {
-            Log.Debug("ExecuteReader with CommandBehavior=" + behavior);
             return ExecuteDbDataReaderInternal(behavior);
         }
 
@@ -978,7 +984,7 @@ namespace Npgsql
         {
             Prechecks();
 
-            Log.Debug("ExecuteReader", Connection.Connector.Id);
+            Log.Trace("ExecuteReader", Connection.Connector.Id);
 
             Connection.Connector.StartUserAction();
             try
@@ -988,9 +994,7 @@ namespace Npgsql
             }
             catch
             {
-                if (Connection.Connector != null) {
-                    Connection.Connector.EndUserAction();
-                }
+                Connection.Connector?.EndUserAction();
 
                 // Close connection if requested even when there is an error.
                 if ((behavior & CommandBehavior.CloseConnection) == CommandBehavior.CloseConnection)
@@ -1058,7 +1062,7 @@ namespace Npgsql
 
             var connector = Connection.Connector;
             if (State != CommandState.InProgress) {
-                Log.Debug(String.Format("Skipping cancel because command is in state {0}", State), connector.Id);
+                Log.Debug($"Skipping cancel because command is in state {State}", connector.Id);
                 return;
             }
 
@@ -1138,12 +1142,46 @@ namespace Npgsql
             }
         }
 
-#if !DNXCORE50
+        void LogCommand()
+        {
+            if (!Log.IsEnabled(NpgsqlLogLevel.Debug)) {
+                return;
+            }
+
+            var sb = new StringBuilder();
+            sb.Append("Executing statement(s):");
+            foreach (var s in _queries)
+            {
+                sb
+                    .AppendLine()
+                    .Append("\t")
+                    .Append(s.SQL);
+            }
+
+            if (NpgsqlLogManager.IsParameterLoggingEnabled && Parameters.Any())
+            {
+                sb
+                    .AppendLine()
+                    .AppendLine("Parameters:");
+                for (var i = 0; i < Parameters.Count; i++)
+                {
+                    sb
+                        .Append("\t$")
+                        .Append(i + 1)
+                        .Append(": ")
+                        .Append(Convert.ToString(Parameters[i].Value, CultureInfo.InvariantCulture));
+                }
+            }
+
+            Log.Debug(sb.ToString(), Connection.Connector.Id);
+        }
+
+#if NET45 || NET452 || DNX452
         /// <summary>
         /// Create a new command based on this one.
         /// </summary>
         /// <returns>A new NpgsqlCommand object.</returns>
-        Object ICloneable.Clone()
+        object ICloneable.Clone()
         {
             return Clone();
         }
@@ -1153,10 +1191,9 @@ namespace Npgsql
         /// Create a new command based on this one.
         /// </summary>
         /// <returns>A new NpgsqlCommand object.</returns>
+        [PublicAPI]
         public NpgsqlCommand Clone()
         {
-            // TODO: Add consistency checks.
-
             var clone = new NpgsqlCommand(CommandText, Connection, Transaction)
             {
                 CommandTimeout = CommandTimeout,

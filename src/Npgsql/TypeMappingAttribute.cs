@@ -5,12 +5,14 @@ using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using JetBrains.Annotations;
 using NpgsqlTypes;
 
 namespace Npgsql
 {
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-    class TypeMappingAttribute : Attribute
+    [MeansImplicitUse]
+    internal class TypeMappingAttribute : Attribute
     {
         /// <summary>
         /// Maps an Npgsql type handler to a PostgreSQL type.
@@ -36,10 +38,10 @@ namespace Npgsql
         /// When <see cref="NpgsqlParameter.NpgsqlDbType"/> or <see cref="NpgsqlParameter.Value"/>
         /// set, <see cref="NpgsqlParameter.DbType"/> will be set to this value.
         /// </param>
-        internal TypeMappingAttribute(string pgName, NpgsqlDbType? npgsqlDbType, DbType[] dbTypes, Type[] types, DbType? inferredDbType)
+        internal TypeMappingAttribute(string pgName, NpgsqlDbType? npgsqlDbType, [CanBeNull] DbType[] dbTypes, [CanBeNull] Type[] types, DbType? inferredDbType)
         {
             if (String.IsNullOrWhiteSpace(pgName))
-                throw new ArgumentException("pgName can't be empty", "pgName");
+                throw new ArgumentException("pgName can't be empty", nameof(pgName));
             Contract.EndContractBlock();
 
             PgName = pgName;
@@ -49,7 +51,7 @@ namespace Npgsql
             InferredDbType = inferredDbType;
         }
 
-        internal TypeMappingAttribute(string pgName, NpgsqlDbType npgsqlDbType, DbType[] dbTypes, Type[] types, DbType inferredDbType)
+        internal TypeMappingAttribute(string pgName, NpgsqlDbType npgsqlDbType, DbType[] dbTypes, [CanBeNull] Type[] types, DbType inferredDbType)
             : this(pgName, (NpgsqlDbType?)npgsqlDbType, dbTypes, types, inferredDbType)
         { }
 
@@ -66,6 +68,10 @@ namespace Npgsql
 
         internal TypeMappingAttribute(string pgName, NpgsqlDbType npgsqlDbType, DbType[] dbTypes, Type type, DbType inferredDbType)
             : this(pgName, npgsqlDbType, dbTypes, new[] { type }, inferredDbType)
+        { }
+
+        internal TypeMappingAttribute(string pgName, NpgsqlDbType npgsqlDbType, DbType[] dbTypes)
+            : this(pgName, npgsqlDbType, dbTypes, new Type[0], null)
         { }
 
         internal TypeMappingAttribute(string pgName, NpgsqlDbType npgsqlDbType, DbType dbType, Type[] types)
@@ -105,6 +111,10 @@ namespace Npgsql
         internal Type[] Types { get; private set; }
         internal DbType? InferredDbType { get; private set; }
 
+        /// <summary>
+        /// Returns a string that represents the current object.
+        /// </summary>
+        /// <returns></returns>
         public override string ToString()
         {
             var sb = new StringBuilder();

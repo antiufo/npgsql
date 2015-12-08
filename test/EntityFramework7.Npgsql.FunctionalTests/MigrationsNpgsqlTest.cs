@@ -4,9 +4,6 @@ using System.Data;
 using System.Data.Common;
 using System.Linq;
 using System.Threading.Tasks;
-using EntityFramework7.Npgsql.Metadata;
-using EntityFramework7.Npgsql.Migrations;
-using Microsoft.Data.Entity;
 using Microsoft.Data.Entity.FunctionalTests;
 using Microsoft.Data.Entity.Internal;
 using Microsoft.Data.Entity.Migrations;
@@ -35,7 +32,7 @@ namespace EntityFramework7.Npgsql.FunctionalTests
 );
 
 CREATE TABLE ""Table1"" (
-    ""Id"" int NOT NULL,
+    ""Id"" int4 NOT NULL,
     CONSTRAINT ""PK_Table1"" PRIMARY KEY (""Id"")
 );
 

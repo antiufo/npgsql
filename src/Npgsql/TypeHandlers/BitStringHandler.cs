@@ -31,6 +31,7 @@ using System.Text;
 using Npgsql.BackendMessages;
 using NpgsqlTypes;
 using System.Data;
+using JetBrains.Annotations;
 
 namespace Npgsql.TypeHandlers
 {
@@ -103,7 +104,7 @@ namespace Npgsql.TypeHandlers
         /// Reads a BitArray from a binary PostgreSQL value. First 32-bit big endian length,
         /// then the data in big-endian. Zero-padded low bits in the end if length is not multiple of 8.
         /// </summary>
-        public override bool Read(out BitArray result)
+        public override bool Read([CanBeNull] out BitArray result)
         {
             if (_pos == -1)
             {
@@ -200,7 +201,7 @@ namespace Npgsql.TypeHandlers
                 return WriteString(str);
             }
 
-            throw PGUtil.ThrowIfReached(String.Format("Bad type {0} some made its way into BitStringHandler.Write()", _value.GetType()));
+            throw PGUtil.ThrowIfReached($"Bad type {_value.GetType()} some made its way into BitStringHandler.Write()");
         }
 
         bool WriteBitArray(BitArray bitArray)
@@ -342,7 +343,7 @@ namespace Npgsql.TypeHandlers
             if (_value is string[]) {
                 return base.Write<string>(ref directBuf);
             }
-            throw PGUtil.ThrowIfReached(String.Format("Can't write type {0} as an bitstring array", _value.GetType()));
+            throw PGUtil.ThrowIfReached($"Can't write type {_value.GetType()} as an bitstring array");
         }
 
         public override int ValidateAndGetLength(object value, ref LengthCache lengthCache, NpgsqlParameter parameter=null)
@@ -356,7 +357,7 @@ namespace Npgsql.TypeHandlers
             if (value is string[]) {
                 return base.ValidateAndGetLength<string>(value, ref lengthCache, parameter);
             }
-            throw new InvalidCastException(String.Format("Can't write type {0} as an bitstring array", value.GetType()));
+            throw new InvalidCastException($"Can't write type {value.GetType()} as an bitstring array");
         }
     }
 }

@@ -34,6 +34,7 @@ using System.Threading.Tasks;
 using Npgsql.BackendMessages;
 using NpgsqlTypes;
 using System.Data;
+using JetBrains.Annotations;
 
 namespace Npgsql.TypeHandlers
 {
@@ -55,7 +56,7 @@ namespace Npgsql.TypeHandlers
             _buf = buf;
         }
 
-        public override bool Read(out byte[] result)
+        public override bool Read([CanBeNull] out byte[] result)
         {
             var toRead = Math.Min(_bytes.Length - _pos, _buf.ReadBytesLeft);
             _buf.ReadBytes(_bytes, _pos, toRead);
@@ -71,7 +72,7 @@ namespace Npgsql.TypeHandlers
             return false;
         }
 
-        public long GetBytes(DataRowMessage row, int offset, byte[] output, int outputOffset, int len, FieldDescription field)
+        public long GetBytes(DataRowMessage row, int offset, [CanBeNull] byte[] output, int outputOffset, int len, FieldDescription field)
         {
             if (output == null) {
                 return row.ColumnLen;
@@ -193,7 +194,7 @@ namespace Npgsql.TypeHandlers
         {
             CheckDisposed();
             count = Math.Min(count, _row.ColumnLen - _row.PosInColumn);
-            var read = await _row.Buffer.ReadAllBytesAsync(token, buffer, offset, count, true);
+            var read = await _row.Buffer.ReadAllBytesAsync(buffer, offset, count, true, token);
             _row.PosInColumn += read;
             return read;
         }
@@ -222,9 +223,9 @@ namespace Npgsql.TypeHandlers
             _disposed = true;
         }
 
-        public override bool CanRead { get { return true; } }
-        public override bool CanSeek { get { return false; } }
-        public override bool CanWrite { get { return false; } }
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
 
         void CheckDisposed()
         {

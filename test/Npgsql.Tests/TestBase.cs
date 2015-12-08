@@ -42,6 +42,7 @@ using NUnit.Framework;
 
 namespace Npgsql.Tests
 {
+    [TestFixture("9.5")]
     [TestFixture("9.4")]
     [TestFixture("9.3")]
     [TestFixture("9.2")]
@@ -198,6 +199,7 @@ namespace Npgsql.Tests
             if (!_loggingSetUp)
             {
                 NpgsqlLogManager.Provider = new NLogLoggingProvider();
+                NpgsqlLogManager.IsParameterLoggingEnabled = true;
                 _loggingSetUp = true;
             }
         }

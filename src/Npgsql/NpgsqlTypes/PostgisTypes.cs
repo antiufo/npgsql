@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using JetBrains.Annotations;
 using Npgsql;
 
 namespace NpgsqlTypes
@@ -99,10 +100,7 @@ namespace NpgsqlTypes
     public class PostgisPoint : PostgisGeometry, IEquatable<PostgisPoint>
     {
 
-        internal override WkbIdentifier Identifier
-        {
-            get { return WkbIdentifier.Point; }
-        }
+        internal override WkbIdentifier Identifier => WkbIdentifier.Point;
 
         Coordinate2D _coord;
 
@@ -129,7 +127,7 @@ namespace NpgsqlTypes
             set { _coord.Y = value; }
         }
 
-        public bool Equals(PostgisPoint other)
+        public bool Equals([CanBeNull] PostgisPoint other)
         {
             if (ReferenceEquals(other, null))
                 return false;
@@ -137,12 +135,12 @@ namespace NpgsqlTypes
         }
 
 
-        public override bool Equals(object obj)
+        public override bool Equals([CanBeNull] object obj)
         {
             return Equals(obj as PostgisPoint);
         }
 
-        public static bool operator ==(PostgisPoint x, PostgisPoint y)
+        public static bool operator ==([CanBeNull] PostgisPoint x, [CanBeNull] PostgisPoint y)
         {
             if (ReferenceEquals(x, null))
                 return ReferenceEquals(y, null);
@@ -167,10 +165,7 @@ namespace NpgsqlTypes
     {
         readonly Coordinate2D[] _points;
 
-        internal override WkbIdentifier Identifier
-        {
-            get { return WkbIdentifier.LineString; }
-        }
+        internal override WkbIdentifier Identifier => WkbIdentifier.LineString;
 
         protected override int GetLenHelper()
         {
@@ -187,10 +182,7 @@ namespace NpgsqlTypes
             return GetEnumerator();
         }
 
-        public Coordinate2D this[int index]
-        {
-            get { return _points[index]; }
-        }
+        public Coordinate2D this[int index] => _points[index];
 
         public PostgisLineString(IEnumerable<Coordinate2D> points)
         {
@@ -202,12 +194,9 @@ namespace NpgsqlTypes
             _points = points;
         }
 
-        public int PointCount
-        {
-            get { return _points.Length; }
-        }
+        public int PointCount => _points.Length;
 
-        public bool Equals(PostgisLineString other)
+        public bool Equals([CanBeNull] PostgisLineString other)
         {
             if (ReferenceEquals(other , null))
                 return false ;
@@ -221,7 +210,7 @@ namespace NpgsqlTypes
             return true;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals([CanBeNull] object obj)
         {
             return Equals(obj as PostgisLineString);
         }
@@ -261,26 +250,11 @@ namespace NpgsqlTypes
             return 4 + _rings.Length * 4 + TotalPointCount * 16;
         }
 
-        internal override WkbIdentifier Identifier
-        {
-            get { return WkbIdentifier.Polygon; }
-        }
+        internal override WkbIdentifier Identifier => WkbIdentifier.Polygon;
 
-        public Coordinate2D this[int ringIndex, int pointIndex]
-        {
-            get
-            {
-                return _rings[ringIndex][pointIndex];
-            }
-        }
+        public Coordinate2D this[int ringIndex, int pointIndex] => _rings[ringIndex][pointIndex];
 
-        public Coordinate2D[] this[int ringIndex]
-        {
-            get
-            {
-                return _rings[ringIndex];
-            }
-        }
+        public Coordinate2D[] this[int ringIndex] => _rings[ringIndex];
 
         public PostgisPolygon(Coordinate2D[][] rings)
         {
@@ -312,12 +286,12 @@ namespace NpgsqlTypes
             return true;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals([CanBeNull] object obj)
         {
             return Equals(obj as PostgisPolygon);
         }
 
-        public static bool operator ==(PostgisPolygon x, PostgisPolygon y)
+        public static bool operator ==([CanBeNull] PostgisPolygon x, [CanBeNull] PostgisPolygon y)
         {
             if (ReferenceEquals(x, null))
                 return ReferenceEquals(y, null);
@@ -329,10 +303,7 @@ namespace NpgsqlTypes
             return !(x == y);
         }
 
-        public int RingCount
-        {
-            get { return _rings.Length; }
-        }
+        public int RingCount => _rings.Length;
 
         public int TotalPointCount
         {
@@ -368,10 +339,7 @@ namespace NpgsqlTypes
     {
         readonly Coordinate2D[] _points;
 
-        internal override WkbIdentifier Identifier
-        {
-            get { return WkbIdentifier.MultiPoint; }
-        }
+        internal override WkbIdentifier Identifier => WkbIdentifier.MultiPoint;
 
         protected override int GetLenHelper()
         {
@@ -403,12 +371,9 @@ namespace NpgsqlTypes
             _points = points.ToArray();
         }
 
-        public Coordinate2D this[int indexer]
-        {
-            get { return _points[indexer]; }
-        }
+        public Coordinate2D this[int indexer] => _points[indexer];
 
-        public bool Equals(PostgisMultiPoint other)
+        public bool Equals([CanBeNull] PostgisMultiPoint other)
         {
             if (ReferenceEquals(other ,null))
                 return false ;
@@ -423,12 +388,12 @@ namespace NpgsqlTypes
             return true;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals([CanBeNull] object obj)
         {
             return Equals(obj as PostgisMultiPoint);
         }
 
-        public static bool operator ==(PostgisMultiPoint x, PostgisMultiPoint y)
+        public static bool operator ==([CanBeNull] PostgisMultiPoint x, [CanBeNull] PostgisMultiPoint y)
         {
             if (ReferenceEquals(x, null))
                 return ReferenceEquals(y, null);
@@ -450,10 +415,7 @@ namespace NpgsqlTypes
             return ret;
         }
 
-        public int PointCount
-        {
-            get { return _points.Length; }
-        }
+        public int PointCount => _points.Length;
     }
 
     /// <summary>
@@ -472,10 +434,7 @@ namespace NpgsqlTypes
             }
         }
 
-        internal override WkbIdentifier Identifier
-        {
-            get { return WkbIdentifier.MultiLineString; }
-        }
+        internal override WkbIdentifier Identifier => WkbIdentifier.MultiLineString;
 
         protected override int GetLenHelper()
         {
@@ -507,17 +466,14 @@ namespace NpgsqlTypes
             _lineStrings = linestrings.ToArray();
         }
 
-        public PostgisLineString this[int index]
-        {
-            get { return _lineStrings[index]; }
-        }
+        public PostgisLineString this[int index] => _lineStrings[index];
 
         public PostgisMultiLineString(IEnumerable<IEnumerable<Coordinate2D>> pointList)
         {
             _lineStrings = pointList.Select(x => new PostgisLineString(x)).ToArray();
         }
 
-        public bool Equals(PostgisMultiLineString other)
+        public bool Equals([CanBeNull] PostgisMultiLineString other)
         {
             if (ReferenceEquals(other ,null))
                 return false ;
@@ -530,12 +486,12 @@ namespace NpgsqlTypes
             return true;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals([CanBeNull] object obj)
         {
             return Equals(obj as PostgisMultiLineString);
         }
 
-        public static bool operator ==(PostgisMultiLineString x, PostgisMultiLineString y)
+        public static bool operator ==([CanBeNull] PostgisMultiLineString x, [CanBeNull] PostgisMultiLineString y)
         {
             if (ReferenceEquals(x, null))
                 return ReferenceEquals(y, null);
@@ -557,13 +513,7 @@ namespace NpgsqlTypes
             return ret;
         }
 
-        public int LineCount
-        {
-            get
-            {
-                return _lineStrings.Length;
-            }
-        }
+        public int LineCount => _lineStrings.Length;
     }
 
     /// <summary>
@@ -583,15 +533,9 @@ namespace NpgsqlTypes
             return GetEnumerator();
         }
 
-        internal override WkbIdentifier Identifier
-        {
-            get { return WkbIdentifier.MultiPolygon; }
-        }
+        internal override WkbIdentifier Identifier => WkbIdentifier.MultiPolygon;
 
-        public PostgisPolygon this[int index]
-        {
-            get { return _polygons[index]; }
-        }
+        public PostgisPolygon this[int index] => _polygons[index];
 
         public PostgisMultiPolygon(PostgisPolygon[] polygons)
         {
@@ -656,13 +600,7 @@ namespace NpgsqlTypes
         }
 
 
-        public int PolygonCount
-        {
-            get
-            {
-                return _polygons.Length;
-            }
-        }
+        public int PolygonCount => _polygons.Length;
     }
 
     /// <summary>
@@ -672,15 +610,9 @@ namespace NpgsqlTypes
     {
         readonly PostgisGeometry[] _geometries;
 
-        public PostgisGeometry this[int index]
-        {
-            get { return _geometries[index]; }
-        }
+        public PostgisGeometry this[int index] => _geometries[index];
 
-        internal override WkbIdentifier Identifier
-        {
-            get { return WkbIdentifier.GeometryCollection; }
-        }
+        internal override WkbIdentifier Identifier => WkbIdentifier.GeometryCollection;
 
         public IEnumerator<PostgisGeometry> GetEnumerator()
         {
@@ -702,7 +634,7 @@ namespace NpgsqlTypes
             _geometries = geometries.ToArray();
         }
 
-        public bool Equals(PostgisGeometryCollection other)
+        public bool Equals([CanBeNull] PostgisGeometryCollection other)
         {
             if (ReferenceEquals(other, null))
                 return false;
@@ -715,12 +647,12 @@ namespace NpgsqlTypes
             return true;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals([CanBeNull] object obj)
         {
             return Equals(obj as PostgisGeometryCollection);
         }
 
-        public static bool operator ==(PostgisGeometryCollection x, PostgisGeometryCollection y)
+        public static bool operator ==([CanBeNull] PostgisGeometryCollection x, [CanBeNull] PostgisGeometryCollection y)
         {
             if (ReferenceEquals(x, null))
                 return ReferenceEquals(y, null);
@@ -752,12 +684,6 @@ namespace NpgsqlTypes
             return n;
         }
 
-        public int GeometryCount
-        {
-            get
-            {
-                return _geometries.Length;
-            }
-        }
+        public int GeometryCount => _geometries.Length;
     }
 }

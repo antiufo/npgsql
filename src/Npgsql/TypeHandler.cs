@@ -22,17 +22,14 @@
 #endregion
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.Contracts;
-using System.Linq;
-using System.Text;
+using System.IO;
 using Npgsql.BackendMessages;
 using NpgsqlTypes;
-using System.Data;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using AsyncRewriter;
+using JetBrains.Annotations;
 
 namespace Npgsql
 {
@@ -53,7 +50,7 @@ namespace Npgsql
             return ReadValueAsObjectFully(row, fieldDescription);
         }
 
-        public virtual bool PreferTextWrite { get { return false; } }
+        internal virtual bool PreferTextWrite => false;
 
         [RewriteAsync]
         internal T ReadFully<T>(DataRowMessage row, int len, FieldDescription fieldDescription = null)
@@ -75,16 +72,26 @@ namespace Npgsql
         }
 
         internal abstract T ReadFully<T>(NpgsqlBuffer buf, int len, FieldDescription fieldDescription = null);
-        internal abstract Task<T> ReadFullyAsync<T>(CancellationToken cancellationToken, NpgsqlBuffer buf, int len, FieldDescription fieldDescription = null);
+        internal abstract Task<T> ReadFullyAsync<T>(NpgsqlBuffer buf, int len, CancellationToken cancellationToken, FieldDescription fieldDescription = null);
 
+        /// <summary>
+        ///
+        /// </summary>
+        /// <param name="clrType"></param>
+        /// <returns></returns>
         protected Exception CreateConversionException(Type clrType)
         {
-            return new InvalidCastException(string.Format("Can't convert .NET type {0} to PostgreSQL {1}", clrType, PgName));
+            return new InvalidCastException($"Can't convert .NET type {clrType} to PostgreSQL {PgName}");
         }
 
+        /// <summary>
+        ///
+        /// </summary>
+        /// <param name="clrType"></param>
+        /// <returns></returns>
         protected Exception CreateConversionButNoParamException(Type clrType)
         {
-            return new InvalidCastException(string.Format("Can't convert .NET type {0} to PostgreSQL {1} within an array", clrType, PgName));
+            return new InvalidCastException($"Can't convert .NET type {clrType} to PostgreSQL {PgName} within an array");
         }
 
         [ContractInvariantMethod]
@@ -96,12 +103,12 @@ namespace Npgsql
 
     internal abstract class TypeHandler<T> : TypeHandler
     {
-        internal override Type GetFieldType(FieldDescription fieldDescription)
+        internal override Type GetFieldType(FieldDescription fieldDescription = null)
         {
             return typeof(T);
         }
 
-        internal override Type GetProviderSpecificFieldType(FieldDescription fieldDescription)
+        internal override Type GetProviderSpecificFieldType(FieldDescription fieldDescription = null)
         {
             return typeof(T);
         }
@@ -120,8 +127,8 @@ namespace Npgsql
 
     internal interface ISimpleTypeHandler
     {
-        int ValidateAndGetLength(object value, NpgsqlParameter parameter);
-        void Write(object value, NpgsqlBuffer buf, NpgsqlParameter parameter);
+        int ValidateAndGetLength(object value, [CanBeNull] NpgsqlParameter parameter);
+        void Write(object value, NpgsqlBuffer buf, [CanBeNull] NpgsqlParameter parameter);
         object ReadAsObject(NpgsqlBuffer buf, int len, FieldDescription fieldDescription = null);
     }
 
@@ -143,7 +150,8 @@ namespace Npgsql
             if (asTypedHandler == null) {
                 if (fieldDescription == null)
                     throw new InvalidCastException("Can't cast database type to " + typeof(T2).Name);
-                throw new InvalidCastException(String.Format("Can't cast database type {0} to {1}", fieldDescription.Handler.PgName, typeof(T2).Name));
+                throw new InvalidCastException(
+                    $"Can't cast database type {fieldDescription.Handler.PgName} to {typeof (T2).Name}");
             }
 
             return asTypedHandler.Read(buf, len, fieldDescription);
@@ -172,7 +180,7 @@ namespace Npgsql
     /// <typeparam name="TPsv">the type of the provider-specific value returned by this type handler</typeparam>
     internal abstract class SimpleTypeHandlerWithPsv<T, TPsv> : SimpleTypeHandler<T>, ISimpleTypeHandler<TPsv>, ITypeHandlerWithPsv
     {
-        internal override Type GetProviderSpecificFieldType(FieldDescription fieldDescription)
+        internal override Type GetProviderSpecificFieldType(FieldDescription fieldDescription = null)
         {
             return typeof(TPsv);
         }
@@ -199,8 +207,8 @@ namespace Npgsql
     internal interface IChunkingTypeHandler
     {
         void PrepareRead(NpgsqlBuffer buf, int len, FieldDescription fieldDescription = null);
-        int ValidateAndGetLength(object value, ref LengthCache lengthCache, NpgsqlParameter parameter);
-        void PrepareWrite(object value, NpgsqlBuffer buf, LengthCache lengthCache, NpgsqlParameter parameter);
+        int ValidateAndGetLength(object value, ref LengthCache lengthCache, [CanBeNull] NpgsqlParameter parameter);
+        void PrepareWrite(object value, NpgsqlBuffer buf, LengthCache lengthCache, [CanBeNull] NpgsqlParameter parameter);
         bool Write(ref DirectBuffer directBuf);
         bool ReadAsObject(out object result);
     }
@@ -243,7 +251,8 @@ namespace Npgsql
             {
                 if (fieldDescription == null)
                     throw new InvalidCastException("Can't cast database type to " + typeof(T2).Name);
-                throw new InvalidCastException(String.Format("Can't cast database type {0} to {1}", fieldDescription.Handler.PgName, typeof(T2).Name));
+                throw new InvalidCastException(
+                    $"Can't cast database type {fieldDescription.Handler.PgName} to {typeof (T2).Name}");
             }
 
             asTypedHandler.PrepareRead(buf, len, fieldDescription);
@@ -277,7 +286,7 @@ namespace Npgsql
     // ReSharper disable once InconsistentNaming
     class ChunkingTypeHandlerContracts<T> : ChunkingTypeHandler<T>
     {
-        public override void PrepareRead(NpgsqlBuffer buf, int len, FieldDescription fieldDescription)
+        public override void PrepareRead(NpgsqlBuffer buf, int len, FieldDescription fieldDescription = null)
         {
             Contract.Requires(buf != null);
         }
@@ -306,6 +315,15 @@ namespace Npgsql
             Contract.Ensures(Contract.Result<bool>() == false || directBuf.Buffer == null);
             return default(bool);
         }
+    }
+
+    /// <summary>
+    /// Implemented by handlers which support <see cref="NpgsqlDataReader.GetTextReader"/>, returns a standard
+    /// TextReader given a binary Stream.
+    /// </summary>
+    interface ITextReaderHandler
+    {
+        TextReader GetTextReader(Stream stream);
     }
 
     struct DirectBuffer

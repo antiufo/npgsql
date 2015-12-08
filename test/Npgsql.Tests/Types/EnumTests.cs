@@ -29,6 +29,7 @@ using System.Text;
 using Npgsql;
 using NpgsqlTypes;
 
+
 namespace Npgsql.Tests.Types
 {
     class EnumTests : TestBase
@@ -84,21 +85,27 @@ namespace Npgsql.Tests.Types
         {
             ExecuteNonQuery("CREATE TYPE pg_temp.mood AS ENUM ('Sad', 'Ok', 'Happy')");
             NpgsqlConnection.MapEnumGlobally<Mood>();
-            Conn.ReloadTypes();
-            const Mood expected = Mood.Ok;
-            using (var cmd = new NpgsqlCommand("SELECT @p::MOOD", Conn))
+            try
             {
-                var p = new NpgsqlParameter {ParameterName = "p", Value = expected};
-                cmd.Parameters.Add(p);
-                using (var reader = cmd.ExecuteReader())
+                Conn.ReloadTypes();
+                const Mood expected = Mood.Ok;
+                using (var cmd = new NpgsqlCommand("SELECT @p::MOOD", Conn))
                 {
-                    reader.Read();
+                    var p = new NpgsqlParameter {ParameterName = "p", Value = expected};
+                    cmd.Parameters.Add(p);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        reader.Read();
 
-                    Assert.That(reader.GetFieldType(0), Is.EqualTo(typeof (Mood)));
-                    Assert.That(reader.GetFieldValue<Mood>(0), Is.EqualTo(expected));
-                    Assert.That(reader.GetValue(0), Is.EqualTo(expected));
-
+                        Assert.That(reader.GetFieldType(0), Is.EqualTo(typeof (Mood)));
+                        Assert.That(reader.GetFieldValue<Mood>(0), Is.EqualTo(expected));
+                        Assert.That(reader.GetValue(0), Is.EqualTo(expected));
+                    }
                 }
+            }
+            finally
+            {
+                NpgsqlConnection.UnmapEnumGlobally<Mood>();
             }
         }
 
@@ -129,6 +136,54 @@ namespace Npgsql.Tests.Types
                         Assert.That(reader.GetValue(i), Is.EqualTo(expected));
                     }
                 }
+            }
+        }
+
+        [Test]
+        public void ReadUnmappedEnumsAsString()
+        {
+            using (var conn = new NpgsqlConnection(ConnectionString))
+            {
+                conn.Open();
+                ExecuteNonQuery("CREATE TYPE pg_temp.mood AS ENUM ('Sad', 'Ok', 'Happy')", conn);
+                conn.ReloadTypes();
+                using (var cmd = new NpgsqlCommand("SELECT 'Sad'::MOOD, ARRAY['Ok', 'Happy']::MOOD[]", conn))
+                using (var reader = cmd.ExecuteReader())
+                {
+                    reader.Read();
+                    Assert.That(reader[0], Is.EqualTo("Sad"));
+                    Assert.That(reader[1], Is.EqualTo(new[] { "Ok", "Happy" }));
+                }
+            }
+        }
+
+        [Test, Description("Test that a c# string can be written to a backend enum when DbType is unknown")]
+        public void WriteStringToBackendEnum()
+        {
+            ExecuteNonQuery("CREATE TYPE pg_temp.fruit AS ENUM ('Banana', 'Apple', 'Orange')");
+            ExecuteNonQuery("create table pg_temp.test_fruit ( id serial, value1 pg_temp.fruit, value2 pg_temp.fruit );");
+            Conn.ReloadTypes();
+            const string expected = "Banana";
+            using (var cmd = new NpgsqlCommand("insert into pg_temp.test_fruit(id, value1, value2) values(default, @p1, @p2);", Conn))
+            {
+                cmd.Parameters.AddWithValue("p2", NpgsqlDbType.Unknown, expected);
+                var p2 = new NpgsqlParameter("p1", NpgsqlDbType.Unknown) {Value = expected};
+                cmd.Parameters.Add(p2);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        [Test, Description("Tests that a a C# enum an be written to an enum backend when passed as dbUnknown")]
+        public void WriteEnumAsDbUnknwown()
+        {
+            ExecuteNonQuery("CREATE TYPE pg_temp.mood AS ENUM ('Sad', 'Ok', 'Happy')", Conn);
+            ExecuteNonQuery("create table pg_temp.test_mood_writes ( value1 pg_temp.mood);");
+            Conn.ReloadTypes();
+            var expected = Mood.Happy;
+            using (var cmd = new NpgsqlCommand("insert into pg_temp.test_mood_writes(value1) values(@p1);", Conn))
+            {
+                cmd.Parameters.AddWithValue("p1", NpgsqlDbType.Unknown, expected);
+                cmd.ExecuteNonQuery();
             }
         }
 

@@ -1,12 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using JetBrains.Annotations;
-using Microsoft.Data.Entity.Metadata;
+﻿using JetBrains.Annotations;
+using Microsoft.Data.Entity.Metadata.Internal;
 
-namespace EntityFramework7.Npgsql.Metadata
+namespace Microsoft.Data.Entity.Metadata
 {
     public class NpgsqlIndexAnnotations : RelationalIndexAnnotations
     {

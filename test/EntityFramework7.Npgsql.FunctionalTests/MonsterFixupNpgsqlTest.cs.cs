@@ -9,7 +9,7 @@ using Microsoft.Data.Entity.ChangeTracking.Internal;
 using Microsoft.Data.Entity.FunctionalTests;
 using Microsoft.Data.Entity.FunctionalTests.TestModels;
 using Microsoft.Data.Entity.Infrastructure;
-using Microsoft.Framework.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
 namespace EntityFramework7.Npgsql.FunctionalTests
@@ -71,9 +71,9 @@ namespace EntityFramework7.Npgsql.FunctionalTests
         public override void OnModelCreating<TMessage, TProductPhoto, TProductReview>(ModelBuilder builder)
         {
             base.OnModelCreating<TMessage, TProductPhoto, TProductReview>(builder);
-            builder.Entity<TMessage>().Key(e => e.MessageId);
-            builder.Entity<TProductPhoto>().Key(e => e.PhotoId);
-            builder.Entity<TProductReview>().Key(e => e.ReviewId);
+            builder.Entity<TMessage>().HasKey(e => e.MessageId);
+            builder.Entity<TProductPhoto>().HasKey(e => e.PhotoId);
+            builder.Entity<TProductReview>().HasKey(e => e.ReviewId);
         }
     }
 }

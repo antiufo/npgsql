@@ -3,12 +3,15 @@
 
 using System;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Reflection;
 using Microsoft.Data.Entity;
 using Microsoft.Data.Entity.FunctionalTests;
 using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Metadata;
-using Microsoft.Framework.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+using NpgsqlTypes;
 
 namespace EntityFramework7.Npgsql.FunctionalTests
 {
@@ -21,6 +24,10 @@ namespace EntityFramework7.Npgsql.FunctionalTests
         public BuiltInDataTypesNpgsqlFixture()
         {
             _testStore = NpgsqlTestStore.CreateScratch();
+
+            _testStore.ExecuteNonQuery("CREATE TYPE somecomposite AS (some_number int, some_text text)");
+            NpgsqlConnection.MapCompositeGlobally<SomeComposite>("somecomposite");
+            ((NpgsqlConnection)_testStore.Connection).ReloadTypes();
 
             _serviceProvider = new ServiceCollection()
                 .AddEntityFramework()
@@ -74,14 +81,14 @@ namespace EntityFramework7.Npgsql.FunctionalTests
 
             modelBuilder.Entity<MappedDataTypes>(b =>
             {
-                b.Key(e => e.Int);
+                b.HasKey(e => e.Int);
                 b.Property(e => e.Int)
                  .ValueGeneratedNever();
             });
 
             modelBuilder.Entity<MappedNullableDataTypes>(b =>
             {
-                b.Key(e => e.Int);
+                b.HasKey(e => e.Int);
                 b.Property(e => e.Int)
                  .ValueGeneratedNever();
             });
@@ -169,18 +176,24 @@ namespace EntityFramework7.Npgsql.FunctionalTests
         public decimal Numeric { get; set; }
 
         public string Text { get; set; }
-        public byte[] Bytea{ get; set; }
+        public byte[] Bytea { get; set; }
 
-        public DateTimeOffset Timestamp { get; set; }
-        public DateTimeOffset Timestamptz { get; set; }
+        public DateTime Timestamp { get; set; }
+        public DateTime Timestamptz { get; set; }
         public DateTime Date { get; set; }
         public TimeSpan Time { get; set; }
         public DateTimeOffset Timetz { get; set; }
         public TimeSpan Interval { get; set; }
 
         public Guid Uuid { get; set; }
-        public bool Bit { get; set; }
-        //public decimal Money { get; set; }
+        public bool Bool { get; set; }
+
+        // Types supported only on PostgreSQL
+        public PhysicalAddress Macaddr { get; set; }
+        public NpgsqlPoint Point { get; set; }
+
+        // Composite
+        public SomeComposite SomeComposite { get; set; }
     }
 
     public class MappedSizedDataTypes
@@ -241,14 +254,35 @@ namespace EntityFramework7.Npgsql.FunctionalTests
         public string Text { get; set; }
         public byte[] Bytea { get; set; }
 
-        public DateTimeOffset? Timestamp { get; set; }
-        public DateTimeOffset? Timestamptz { get; set; }
+        public DateTime? Timestamp { get; set; }
+        public DateTime? Timestamptz { get; set; }
         public DateTime? Date { get; set; }
         public TimeSpan? Time { get; set; }
         public DateTimeOffset? Timetz { get; set; }
         public TimeSpan? Interval { get; set; }
 
         public Guid? Uuid { get; set; }
-        public bool? Bit { get; set; }
+        public bool? Bool { get; set; }
+
+        // Types supported only on PostgreSQL
+        public PhysicalAddress Macaddr { get; set; }
+        public NpgsqlPoint? Point { get; set; }
+
+        // Composite
+        public SomeComposite SomeComposite { get; set; }
+    }
+
+    public class SomeComposite
+    {
+        [PgName("some_number")]
+        public int SomeNumber { get; set; }
+        [PgName("some_text")]
+        public string SomeText { get; set; }
+
+        public override bool Equals(object obj)
+        {
+            var o = obj as SomeComposite;
+            return o != null && o.SomeNumber == SomeNumber && o.SomeText == o.SomeText;
+        }
     }
 }

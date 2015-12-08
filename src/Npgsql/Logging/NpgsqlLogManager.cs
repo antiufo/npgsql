@@ -55,15 +55,21 @@ namespace Npgsql.Logging
             }
         }
 
+        /// <summary>
+        /// Determines whether parameter contents will be logged alongside SQL statements - this may reveal sensitive information.
+        /// Defaults to false.
+        /// </summary>
+        public static bool IsParameterLoggingEnabled { get; set; }
+
         static INpgsqlLoggingProvider _provider;
         static bool _providerRetrieved;
 
-        static internal NpgsqlLogger CreateLogger(string name)
+        internal static NpgsqlLogger CreateLogger(string name)
         {
             return Provider.CreateLogger(name);
         }
 
-        static internal NpgsqlLogger GetCurrentClassLogger()
+        internal static NpgsqlLogger GetCurrentClassLogger()
         {
             return CreateLogger(GetClassFullName());
         }
@@ -71,6 +77,7 @@ namespace Npgsql.Logging
         // Copied from NLog
         static string GetClassFullName()
         {
+#if NET45 || NET452 || DNX452
             string className;
             Type declaringType;
             int framesToSkip = 2;
@@ -93,6 +100,9 @@ namespace Npgsql.Logging
             } while (declaringType.Module.Name.Equals("mscorlib.dll", StringComparison.OrdinalIgnoreCase));
 
             return className;
+#else
+            return "<UNKNOWN>";
+#endif
         }
 
         static NpgsqlLogManager()

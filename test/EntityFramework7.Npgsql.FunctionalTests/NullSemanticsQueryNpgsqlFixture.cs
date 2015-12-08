@@ -1,14 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
+
+using System;
 using Microsoft.Data.Entity;
 using Microsoft.Data.Entity.FunctionalTests;
 using Microsoft.Data.Entity.FunctionalTests.TestModels.NullSemantics;
 using Microsoft.Data.Entity.FunctionalTests.TestModels.NullSemanticsModel;
-using Microsoft.Framework.DependencyInjection;
-using Microsoft.Framework.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace EntityFramework7.Npgsql.FunctionalTests
 {
@@ -52,13 +51,24 @@ namespace EntityFramework7.Npgsql.FunctionalTests
             });
         }
 
-        public override NullSemanticsContext CreateContext(NpgsqlTestStore testStore)
+        public override NullSemanticsContext CreateContext(NpgsqlTestStore testStore, bool useRelationalNulls)
         {
             var optionsBuilder = new DbContextOptionsBuilder();
-            optionsBuilder.UseNpgsql(testStore.Connection);
+
+            var npgsqlOptions
+                = optionsBuilder
+                    .EnableSensitiveDataLogging()
+                    .UseNpgsql(testStore.Connection);
+
+            if (useRelationalNulls)
+            {
+                npgsqlOptions.UseRelationalNulls();
+            }
 
             var context = new NullSemanticsContext(_serviceProvider, optionsBuilder.Options);
+
             context.Database.UseTransaction(testStore.Transaction);
+
             return context;
         }
     }

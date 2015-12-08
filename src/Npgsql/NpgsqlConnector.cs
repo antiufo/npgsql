@@ -23,9 +23,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Data.Common;
-using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
@@ -33,14 +31,14 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using AsyncRewriter;
+using JetBrains.Annotations;
 using Npgsql.BackendMessages;
 using Npgsql.FrontendMessages;
-using Npgsql.TypeHandlers;
-using NpgsqlTypes;
 using Npgsql.Logging;
 
 namespace Npgsql
@@ -84,7 +82,7 @@ namespace Npgsql
         /// <summary>
         /// Version of backend server this connector is connected to.
         /// </summary>
-        internal Version ServerVersion { get; set; }
+        internal Version ServerVersion { get; private set; }
 
         /// <summary>
         /// The secret key of the backend for this connector, used for query cancellation.
@@ -99,7 +97,7 @@ namespace Npgsql
         /// <summary>
         /// A unique ID identifying this connector, used for logging. Currently mapped to BackendProcessId
         /// </summary>
-        internal int Id { get { return BackendProcessId; } }
+        internal int Id => BackendProcessId;
 
         internal TypeHandlerRegistry TypeHandlerRegistry { get; set; }
 
@@ -159,17 +157,17 @@ namespace Npgsql
         /// <summary>
         /// Holds all run-time parameters received from the backend (via ParameterStatus messages)
         /// </summary>
-        internal Dictionary<string, string> BackendParams;
+        internal readonly Dictionary<string, string> BackendParams;
 
-#if !DNXCORE50
-        internal SSPIHandler SSPI { get; set; }
+#if NET45 || NET452 || DNX452
+        SSPIHandler _sspi;
 #endif
 
         /// <summary>
         /// The frontend timeout for reading messages that are part of the user's command
         /// (i.e. which aren't internal prepended commands).
         /// </summary>
-        internal int UserCommandFrontendTimeout { get; set; }
+        internal int UserCommandFrontendTimeout { private get; set; }
 
         /// <summary>
         /// Contains the current value of the statement_timeout parameter at the backend,
@@ -275,7 +273,6 @@ namespace Npgsql
             BackendParams = new Dictionary<string, string>();
             _messagesToSend = new List<FrontendMessage>();
             _preparedStatementIndex = 0;
-            _portalIndex = 0;
 
             _userLock = new SemaphoreSlim(1, 1);
             _asyncLock = new SemaphoreSlim(1, 1);
@@ -291,24 +288,23 @@ namespace Npgsql
 
         #region Configuration settings
 
-        internal string ConnectionString { get { return _settings.ConnectionString; } }
-        internal string Host { get { return _settings.Host; } }
-        internal int Port { get { return _settings.Port; } }
-        internal string Database { get { return _settings.Database; } }
-        internal string UserName { get { return _settings.Username; } }
-        internal string KerberosServiceName { get { return _settings.KerberosServiceName; } }
-        internal SslMode SslMode { get { return _settings.SslMode; } }
-        internal bool UseSslStream { get { return _settings.UseSslStream; } }
-        internal int BufferSize { get { return _settings.BufferSize; } }
-        internal int ConnectionTimeout { get { return _settings.Timeout; } }
-        internal bool BackendTimeouts { get { return _settings.BackendTimeouts; } }
-        internal int KeepAlive { get { return _settings.KeepAlive; } }
-        internal bool Enlist { get { return _settings.Enlist; } }
-        internal bool IntegratedSecurity { get { return _settings.IntegratedSecurity; } }
-        internal bool ConvertInfinityDateTime { get { return _settings.ConvertInfinityDateTime; } }
-        internal bool ContinuousProcessing { get { return _settings.ContinuousProcessing; } }
+        internal string ConnectionString => _settings.ConnectionString;
+        string Host => _settings.Host;
+        int Port => _settings.Port;
+        string Database => _settings.Database;
+        string Username => _settings.Username;
+        string KerberosServiceName => _settings.KerberosServiceName;
+        SslMode SslMode => _settings.SslMode;
+        bool UseSslStream => _settings.UseSslStream;
+        int BufferSize => _settings.BufferSize;
+        int ConnectionTimeout => _settings.Timeout;
+        bool BackendTimeouts => _settings.BackendTimeouts;
+        int KeepAlive => _settings.KeepAlive;
+        bool IntegratedSecurity => _settings.IntegratedSecurity;
+        bool ContinuousProcessing => _settings.ContinuousProcessing;
+        internal bool ConvertInfinityDateTime => _settings.ConvertInfinityDateTime;
 
-        internal int ActualInternalCommandTimeout
+        int ActualInternalCommandTimeout
         {
             get
             {
@@ -348,7 +344,7 @@ namespace Npgsql
         /// <summary>
         /// Returns whether the connector is open, regardless of any task it is currently performing
         /// </summary>
-        internal bool IsConnected
+        bool IsConnected
         {
             get
             {
@@ -364,38 +360,14 @@ namespace Npgsql
                     case ConnectorState.Broken:
                         return false;
                     default:
-                        throw new ArgumentOutOfRangeException("State", "Unknown state: " + State);
+                        throw new ArgumentOutOfRangeException("Unknown state: " + State);
                 }
             }
         }
 
-        /// <summary>
-        /// Returns whether the connector is open and performing a task, i.e. not ready for a query
-        /// </summary>
-        internal bool IsBusy
-        {
-            get
-            {
-                switch (State)
-                {
-                    case ConnectorState.Executing:
-                    case ConnectorState.Fetching:
-                    case ConnectorState.Copy:
-                        return true;
-                    case ConnectorState.Ready:
-                    case ConnectorState.Closed:
-                    case ConnectorState.Connecting:
-                    case ConnectorState.Broken:
-                        return false;
-                    default:
-                        throw new ArgumentOutOfRangeException("State", "Unknown state: " + State);
-                }
-            }
-        }
-
-        internal bool IsReady  { get { return State == ConnectorState.Ready;  } }
-        internal bool IsClosed { get { return State == ConnectorState.Closed; } }
-        internal bool IsBroken { get { return State == ConnectorState.Broken; } }
+        internal bool IsReady => State == ConnectorState.Ready;
+        internal bool IsClosed => State == ConnectorState.Closed;
+        internal bool IsBroken => State == ConnectorState.Broken;
 
         #endregion
 
@@ -431,7 +403,7 @@ namespace Npgsql
 
                 HandleAuthentication(timeout);
                 TypeHandlerRegistry.Setup(this, timeout);
-                State = ConnectorState.Ready;
+                Log.Debug($"Opened connection to {Host}:{Port}", Id);
 
                 if (ContinuousProcessing) {
                     HandleAsyncMessages();
@@ -449,10 +421,11 @@ namespace Npgsql
 
         void WriteStartupMessage()
         {
-            var startupMessage = new StartupMessage();
+            var startupMessage = new StartupMessage {
+                ["client_encoding"] = "UTF8",
+                ["user"] = Username
+            };
 
-            startupMessage["client_encoding"] = "UTF8";
-            startupMessage["user"] = UserName;
             if (!string.IsNullOrEmpty(Database))
             {
                 startupMessage["database"] = Database;
@@ -483,7 +456,7 @@ namespace Npgsql
         }
 
         [RewriteAsync]
-        public void RawOpen(NpgsqlTimeout timeout)
+        void RawOpen(NpgsqlTimeout timeout)
         {
             try
             {
@@ -496,6 +469,7 @@ namespace Npgsql
 
                 if (SslMode == SslMode.Require || SslMode == SslMode.Prefer)
                 {
+                    Log.Trace("Attempting SSL negotiation");
                     SSLRequestMessage.Instance.Write(Buffer);
                     Buffer.Flush();
 
@@ -506,7 +480,7 @@ namespace Npgsql
                     switch (response)
                     {
                     default:
-                        throw new Exception(string.Format("Received unknown response {0} for SSLRequest (expecting S or N)", response));
+                        throw new Exception($"Received unknown response {response} for SSLRequest (expecting S or N)");
                     case 'N':
                         if (SslMode == SslMode.Require)
                         {
@@ -515,10 +489,7 @@ namespace Npgsql
                         break;
                     case 'S':
                         var clientCertificates = new X509CertificateCollection();
-                        if (Connection.ProvideClientCertificatesCallback != null)
-                        {
-                            Connection.ProvideClientCertificatesCallback(clientCertificates);
-                        }
+                        Connection.ProvideClientCertificatesCallback?.Invoke(clientCertificates);
 
                         RemoteCertificateValidationCallback certificateValidationCallback;
                         if (_settings.TrustServerCertificate)
@@ -536,28 +507,29 @@ namespace Npgsql
 
                         if (!UseSslStream)
                         {
-#if DNXCORE50
-                            throw new NotSupportedException("TLS implementation not yet supported with .NET Core");
-#else
+#if NET45 || NET452 || DNX452
                             var sslStream = new TlsClientStream.TlsClientStream(_stream);
                             sslStream.PerformInitialHandshake(Host, clientCertificates, certificateValidationCallback, false);
                             _stream = sslStream;
+#else
+                            throw new NotSupportedException("TLS implementation not yet supported with .NET Core, specify UseSslStream=true for now");
 #endif
                         }
                         else
                         {
                             var sslStream = new SslStream(_stream, false, certificateValidationCallback);
-                            sslStream.AuthenticateAsClient(Host, clientCertificates, System.Security.Authentication.SslProtocols.Default, false);
+                            sslStream.AuthenticateAsClient(Host, clientCertificates, SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12, false);
                             _stream = sslStream;
                         }
                         timeout.Check();
                         Buffer.Underlying = _stream;
                         IsSecure = true;
+                        Log.Trace("SSL negotiation successful");
                         break;
                     }
                 }
 
-                Log.Debug(String.Format("Connected to {0}:{1}", Host, Port));
+                Log.Trace($"Socket connected to {Host}:{Port}");
             }
             catch
             {
@@ -588,9 +560,14 @@ namespace Npgsql
 
         void Connect(NpgsqlTimeout timeout)
         {
+#if NET45 || NET452 || DNX452
             // Note that there aren't any timeoutable DNS methods, and we want to use sync-only
             // methods (not to rely on any TP threads etc.)
             var ips = Dns.GetHostAddresses(Host);
+#else
+            // .NET Core doesn't appear to have sync DNS methods (yet?)
+            var ips = Dns.GetHostAddressesAsync(Host).Result;
+#endif
             timeout.Check();
 
             // Give each IP an equal share of the remaining time
@@ -598,7 +575,7 @@ namespace Npgsql
 
             for (var i = 0; i < ips.Length; i++)
             {
-                Log.Trace("Attempting to connect to " + ips[i], Id);
+                Log.Trace("Attempting to connect to " + ips[i]);
                 var ep = new IPEndPoint(ips[i], Port);
                 var socket = new Socket(ep.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
                 {
@@ -627,9 +604,9 @@ namespace Npgsql
                     }
                     if (!write.Any())
                     {
-                        Log.Warn(string.Format("Timeout after {0} seconds when connecting to {1}",
-                                 new TimeSpan(perIpTimeout * 10).TotalSeconds, ips[i]));
-                        try { socket.Close(); }
+                        Log.Warn(
+                            $"Timeout after {new TimeSpan(perIpTimeout*10).TotalSeconds} seconds when connecting to {ips[i]}");
+                        try { socket.Dispose(); }
                         catch
                         {
                             // ignored
@@ -647,7 +624,7 @@ namespace Npgsql
                 catch (TimeoutException) { throw; }
                 catch
                 {
-                    try { socket.Close(); }
+                    try { socket.Dispose(); }
                     catch
                     {
                         // ignored
@@ -677,7 +654,11 @@ namespace Npgsql
                 Log.Trace("Attempting to connect to " + ips[i], Id);
                 var ep = new IPEndPoint(ips[i], Port);
                 var socket = new Socket(ep.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+#if DNXCORE50
+                var connectTask = socket.ConnectAsync(ep);
+#else
                 var connectTask = Task.Factory.FromAsync(socket.BeginConnect, socket.EndConnect, ep, null);
+#endif
                 try
                 {
                     try
@@ -688,13 +669,12 @@ namespace Npgsql
                     {
 #pragma warning disable 4014
                         // ReSharper disable once MethodSupportsCancellation
-                        connectTask.ContinueWith(t => socket.Close());
+                        connectTask.ContinueWith(t => socket.Dispose());
 #pragma warning restore 4014
 
                         if (timeout.HasExpired)
                         {
-                            Log.Warn(string.Format("Timeout after {0} seconds when connecting to {1}",
-                                perIpTimespan.TotalSeconds, ips[i]));
+                            Log.Warn($"Timeout after {perIpTimespan.TotalSeconds} seconds when connecting to {ips[i]}");
                             if (i == ips.Length - 1)
                             {
                                 throw new TimeoutException();
@@ -713,7 +693,7 @@ namespace Npgsql
                 catch (OperationCanceledException) { throw; }
                 catch
                 {
-                    try { socket.Close(); }
+                    try { socket.Dispose(); }
                     catch
                     {
                         // ignored
@@ -732,10 +712,10 @@ namespace Npgsql
         [RewriteAsync]
         void HandleAuthentication(NpgsqlTimeout timeout)
         {
-            Log.Debug("Authenticating...", Id);
+            Log.Trace("Authenticating...", Id);
             while (true)
             {
-                var msg = ReadSingleMessage();
+                var msg = ReadSingleMessage(DataRowLoadingMode.NonSequential);
                 timeout.Check();
                 switch (msg.Code)
                 {
@@ -768,6 +748,7 @@ namespace Npgsql
         /// </summary>
         /// <param name="msg">A message read from the server, instructing us on the required response</param>
         /// <returns>a PasswordMessage to be sent, or null if authentication has completed successfully</returns>
+        [CanBeNull]
         PasswordMessage ProcessAuthenticationMessage(AuthenticationRequestMessage msg)
         {
             switch (msg.AuthRequestType)
@@ -785,45 +766,46 @@ namespace Npgsql
                     if (_password == null) {
                         throw new Exception("No password has been provided but the backend requires one (in MD5)");
                     }
-                    return PasswordMessage.CreateMD5(_password, UserName, ((AuthenticationMD5PasswordMessage)msg).Salt);
+                    return PasswordMessage.CreateMD5(_password, Username, ((AuthenticationMD5PasswordMessage)msg).Salt);
 
                 case AuthenticationRequestType.AuthenticationGSS:
                     if (!IntegratedSecurity) {
                         throw new Exception("GSS authentication but IntegratedSecurity not enabled");
                     }
-#if DNXCORE50
-                    throw new NotSupportedException("SSPI not yet supported in .NET Core");
-#else
+#if NET45 || NET452 || DNX452
                     // For GSSAPI we have to use the supplied hostname
-                    SSPI = new SSPIHandler(Host, KerberosServiceName, true);
-                    return new PasswordMessage(SSPI.Continue(null));
+                    _sspi = new SSPIHandler(Host, KerberosServiceName, true);
+                    return new PasswordMessage(_sspi.Continue(null));
+#else
+                    throw new NotSupportedException("SSPI not yet supported in .NET Core");
 #endif
 
                 case AuthenticationRequestType.AuthenticationSSPI:
                     if (!IntegratedSecurity) {
                         throw new Exception("SSPI authentication but IntegratedSecurity not enabled");
                     }
-#if DNXCORE50
-                    throw new NotSupportedException("SSPI not yet supported in .NET Core");
+#if NET45 || NET452 || DNX452
+                    _sspi = new SSPIHandler(Host, KerberosServiceName, false);
+                    return new PasswordMessage(_sspi.Continue(null));
 #else
-                    SSPI = new SSPIHandler(Host, KerberosServiceName, false);
-                    return new PasswordMessage(SSPI.Continue(null));
+                    throw new NotSupportedException("SSPI not yet supported in .NET Core");
 #endif
 
                 case AuthenticationRequestType.AuthenticationGSSContinue:
-#if DNXCORE50
-                    throw new NotSupportedException("SSPI not yet supported in .NET Core");
-#else
-                    var passwdRead = SSPI.Continue(((AuthenticationGSSContinueMessage)msg).AuthenticationData);
+#if NET45 || NET452 || DNX452
+                    var passwdRead = _sspi.Continue(((AuthenticationGSSContinueMessage)msg).AuthenticationData);
                     if (passwdRead.Length != 0)
                     {
                         return new PasswordMessage(passwdRead);
                     }
                     return null;
+#else
+                    throw new NotSupportedException("SSPI not yet supported in .NET Core");
 #endif
 
                 default:
-                    throw new NotSupportedException(String.Format("Authentication method not supported (Received: {0})", msg.AuthRequestType));
+                    throw new NotSupportedException(
+                        $"Authentication method not supported (Received: {msg.AuthRequestType})");
             }
         }
 
@@ -884,7 +866,7 @@ namespace Npgsql
                 _messagesToSend.Add(PregeneratedMessage.SetStmtTimeout120Sec);
                 return;
             default:
-                _messagesToSend.Add(new QueryMessage(string.Format("SET statement_timeout = {0}", timeout * 1000)));
+                _messagesToSend.Add(new QueryMessage($"SET statement_timeout = {timeout*1000}"));
                 return;
             }
         }
@@ -936,7 +918,7 @@ namespace Npgsql
         [RewriteAsync]
         void SendMessage(FrontendMessage msg)
         {
-            Log.Trace(String.Format("Sending: {0}", msg), Id);
+            Log.Trace($"Sending: {msg}", Id);
 
             var asSimple = msg as SimpleFrontendMessage;
             if (asSimple != null)
@@ -977,8 +959,28 @@ namespace Npgsql
 
         #region Backend message processing
 
+        internal IBackendMessage ReadSingleMessage(DataRowLoadingMode dataRowLoadingMode)
+        {
+            var msg = ReadSingleMessageWithPrepended(dataRowLoadingMode);
+            Contract.Assert(msg != null);
+            return msg;
+        }
+
+        internal Task<IBackendMessage> ReadSingleMessageAsync(DataRowLoadingMode dataRowLoadingMode, CancellationToken cancellationToken)
+        {
+            return ReadSingleMessageWithPrependedAsync(cancellationToken, dataRowLoadingMode);
+        }
+
+        [CanBeNull]
+        IBackendMessage ReadSingleMessageWithNulls(DataRowLoadingMode dataRowLoadingMode)
+        {
+            return ReadSingleMessageWithPrepended(dataRowLoadingMode, true);
+        }
+
         [RewriteAsync]
-        internal IBackendMessage ReadSingleMessage(DataRowLoadingMode dataRowLoadingMode = DataRowLoadingMode.NonSequential, bool returnNullForAsyncMessage = false)
+        [CanBeNull]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        IBackendMessage ReadSingleMessageWithPrepended(DataRowLoadingMode dataRowLoadingMode = DataRowLoadingMode.NonSequential, bool returnNullForAsyncMessage = false)
         {
             // First read the responses of any prepended messages.
             // Exceptions shouldn't happen here, we break the connector if they do
@@ -1030,6 +1032,7 @@ namespace Npgsql
         }
 
         [RewriteAsync]
+        [CanBeNull]
         IBackendMessage DoReadSingleMessage(DataRowLoadingMode dataRowLoadingMode = DataRowLoadingMode.NonSequential,
                                             bool returnNullForAsyncMessage = false,
                                             bool isPrependedMessage = false)
@@ -1099,6 +1102,7 @@ namespace Npgsql
             }
         }
 
+        [CanBeNull]
         IBackendMessage ParseServerMessage(NpgsqlBuffer buf, BackendMessageCode code, int len, DataRowLoadingMode dataRowLoadingMode, bool isPrependedMessage)
         {
             switch (code)
@@ -1162,7 +1166,8 @@ namespace Npgsql
                         case AuthenticationRequestType.AuthenticationGSSContinue:
                             return AuthenticationGSSContinueMessage.Load(buf, len);
                         default:
-                            throw new NotSupportedException(String.Format("Authentication method not supported (Received: {0})", authType));
+                            throw new NotSupportedException(
+                                $"Authentication method not supported (Received: {authType})");
                     }
 
                 case BackendMessageCode.BackendKeyData:
@@ -1223,18 +1228,12 @@ namespace Npgsql
             }
         }
 
-        bool HasDataInBuffers
-        {
-            get
-            {
-                return Buffer.ReadBytesLeft > 0 ||
-                       (_stream is NetworkStream && ((NetworkStream) _stream).DataAvailable)
-#if !DNXCORE50
-                       || (_stream is TlsClientStream.TlsClientStream && ((TlsClientStream.TlsClientStream) _stream).HasBufferedReadData(false))
+        bool HasDataInBuffers => Buffer.ReadBytesLeft > 0 ||
+                                 (_stream is NetworkStream && ((NetworkStream) _stream).DataAvailable)
+#if NET45 || NET452 || DNX452
+                                 || (_stream is TlsClientStream.TlsClientStream && ((TlsClientStream.TlsClientStream) _stream).HasBufferedReadData(false))
 #endif
-                    ;
-            }
-        }
+                                 ;
 
         /// <summary>
         /// Reads and processes any messages that are already in our buffers (either Npgsql or TCP).
@@ -1245,11 +1244,11 @@ namespace Npgsql
         {
             while (HasDataInBuffers)
             {
-                var msg = ReadSingleMessage(DataRowLoadingMode.NonSequential, true);
+                var msg = ReadSingleMessageWithNulls(DataRowLoadingMode.NonSequential);
                 if (msg != null)
                 {
                     Break();
-                    throw new Exception(string.Format("Got unexpected non-async message with code {0} while draining: {1}", msg.Code, msg));
+                    throw new Exception($"Got unexpected non-async message with code {msg.Code} while draining: {msg}");
                 }
             }
         }
@@ -1300,13 +1299,13 @@ namespace Npgsql
         /// </summary>
         internal T ReadExpecting<T>() where T : class, IBackendMessage
         {
-            var msg = ReadSingleMessage();
+            var msg = ReadSingleMessage(DataRowLoadingMode.NonSequential);
             var asExpected = msg as T;
             if (asExpected == null)
             {
                 Break();
-                throw new Exception(string.Format("Received backend message {0} while expecting {1}. Please file a bug.",
-                                                  msg.Code, typeof(T).Name));
+                throw new Exception(
+                    $"Received backend message {msg.Code} while expecting {typeof (T).Name}. Please file a bug.");
             }
             return asExpected;
         }
@@ -1380,7 +1379,7 @@ namespace Npgsql
         /// </summary>
         internal event NotificationEventHandler Notification;
 
-        internal void FireNotice(NpgsqlNotice e)
+        void FireNotice(NpgsqlNotice e)
         {
             var notice = Notice;
             if (notice != null)
@@ -1396,7 +1395,7 @@ namespace Npgsql
             }
         }
 
-        internal void FireNotification(NpgsqlNotificationEventArgs e)
+        void FireNotification(NpgsqlNotificationEventArgs e)
         {
             var notification = Notification;
             if (notification != null)
@@ -1477,18 +1476,23 @@ namespace Npgsql
         /// </summary>
         internal void Close()
         {
-            Log.Debug("Close connector", Id);
+            Log.Trace("Closing connector", Id);
+
+            if (IsReady)
+            {
+                try { SendSingleMessage(TerminateMessage.Instance); }
+                catch (Exception e)
+                {
+                    Log.Error("Exception while closing connector", e, Id);
+                    Contract.Assert(IsBroken);
+                }
+            }
 
             switch (State)
             {
-                case ConnectorState.Broken:
-                case ConnectorState.Closed:
-                    return;
-                case ConnectorState.Ready:
-                    try { SendSingleMessage(TerminateMessage.Instance); } catch {
-                        // ignored
-                    }
-                break;
+            case ConnectorState.Broken:
+            case ConnectorState.Closed:
+                return;
             }
 
             State = ConnectorState.Closed;
@@ -1502,7 +1506,7 @@ namespace Npgsql
         internal Exception UnexpectedMessageReceived(BackendMessageCode received)
         {
             Break();
-            return new Exception(string.Format("Received unexpected backend message {0}. Please file a bug.", received));
+            return new Exception($"Received unexpected backend message {received}. Please file a bug.");
         }
 
         internal void Break()
@@ -1535,7 +1539,11 @@ namespace Npgsql
         void Cleanup()
         {
             Log.Trace("Cleanup connector", Id);
-            try { if (_stream != null) _stream.Dispose(); } catch {
+            try
+            {
+                _stream?.Dispose();
+            }
+            catch {
                 // ignored
             }
 
@@ -1578,7 +1586,7 @@ namespace Npgsql
                 break;
             case ConnectorState.Closed:
             case ConnectorState.Broken:
-                Log.Warn(String.Format("Reset() called on connector with state {0}, ignoring", State), Id);
+                Log.Warn($"Reset() called on connector with state {State}, ignoring", Id);
                 return;
             case ConnectorState.Connecting:
             case ConnectorState.Executing:
@@ -1622,7 +1630,7 @@ namespace Npgsql
             {
                 PrependInternalMessage(PregeneratedMessage.DiscardAll);
             }
-            else
+            else if (SupportsUnlisten)
             {
                 PrependInternalMessage(PregeneratedMessage.UnlistenAll);
                 /*
@@ -1634,7 +1642,6 @@ namespace Npgsql
                     }
                 }*/
 
-                _portalIndex = 0;
                 _preparedStatementIndex = 0;
             }
 
@@ -1741,15 +1748,12 @@ namespace Npgsql
             }
             finally
             {
-                if (_asyncLock != null) { _asyncLock.Release(); }
-                if (_userLock != null) { _userLock.Release(); }
+                _asyncLock?.Release();
+                _userLock?.Release();
             }
         }
 
-        internal bool IsInUserAction
-        {
-            get { return _userLock != null && _userLock.CurrentCount == 0; }
-        }
+        bool IsInUserAction => _userLock != null && _userLock.CurrentCount == 0;
 
         /// <summary>
         /// An IDisposable wrapper around <see cref="NpgsqlConnector.StartUserAction"/> and
@@ -1774,7 +1778,7 @@ namespace Npgsql
 
         #region Async message handling
 
-        internal async void HandleAsyncMessages()
+        async void HandleAsyncMessages()
         {
             try
             {
@@ -1796,9 +1800,7 @@ namespace Npgsql
                     }
                     finally
                     {
-                        if (_asyncLock != null) {
-                            _asyncLock.Release();
-                        }
+                        _asyncLock?.Release();
                     }
                 }
             }
@@ -1848,21 +1850,32 @@ namespace Npgsql
 
         #region Supported features
 
-        internal bool SupportsApplicationName { get; private set; }
-        internal bool SupportsExtraFloatDigits3 { get; private set; }
-        internal bool SupportsExtraFloatDigits { get; private set; }
-        internal bool SupportsSslRenegotiationLimit { get; private set; }
-        internal bool SupportsSavepoint { get; private set; }
-        internal bool SupportsDiscard { get; private set; }
-        internal bool SupportsEStringPrefix { get; private set; }
-        internal bool SupportsHexByteFormat { get; private set; }
-        internal bool SupportsRangeTypes { get; private set; }
-        internal bool UseConformantStrings { get; private set; }
+        bool SupportsDiscard => ServerVersion >= new Version(8, 3, 0);
+        internal bool SupportsRangeTypes => ServerVersion >= new Version(9, 2, 0);
+        bool SupportsUnlisten => ServerVersion >= new Version(6, 4, 0) && !IsRedshift;
+        internal bool UseConformantStrings      { get; private set; }
 
-        /// <summary>
-        /// This method is required to set all the version dependent features flags.
-        /// SupportsPrepare means the server can use prepared query plans (7.3+)
-        /// </summary>
+/*
+        internal bool SupportsApplicationName   { get { return ServerVersion >= new Version(9, 0, 0); } }
+        internal bool SupportsExtraFloatDigits3 { get { return ServerVersion >= new Version(9, 0, 0); } }
+        internal bool SupportsExtraFloatDigits  { get { return ServerVersion >= new Version(7, 4, 0); } }
+        internal bool SupportsSavepoint         { get { return ServerVersion >= new Version(8, 0, 0); } }
+        internal bool SupportsSslRenegotiationLimit
+        {
+            get
+            {
+                return ServerVersion >= new Version(8, 4, 3) ||
+                       (ServerVersion >= new Version(8, 3, 10) && ServerVersion < new Version(8, 4, 0)) ||
+                       (ServerVersion >= new Version(8, 2, 16) && ServerVersion < new Version(8, 3, 0)) ||
+                       (ServerVersion >= new Version(8, 1, 20) && ServerVersion < new Version(8, 2, 0)) ||
+                       (ServerVersion >= new Version(8, 0, 24) && ServerVersion < new Version(8, 1, 0)) ||
+                       (ServerVersion >= new Version(7, 4, 28) && ServerVersion < new Version(8, 0, 0));
+            }
+        }
+*/
+
+        internal bool SupportsEStringPrefix => ServerVersion >= new Version(8, 1, 0);
+
         void ProcessServerVersion(string value)
         {
             var versionString = value.Trim();
@@ -1876,39 +1889,12 @@ namespace Npgsql
                 }
             }
             ServerVersion = new Version(versionString);
-
-            SupportsSavepoint = (ServerVersion >= new Version(8, 0, 0));
-            SupportsDiscard = (ServerVersion >= new Version(8, 3, 0));
-            SupportsApplicationName = (ServerVersion >= new Version(9, 0, 0));
-            SupportsExtraFloatDigits3 = (ServerVersion >= new Version(9, 0, 0));
-            SupportsExtraFloatDigits = (ServerVersion >= new Version(7, 4, 0));
-            SupportsSslRenegotiationLimit = ((ServerVersion >= new Version(8, 4, 3)) ||
-                     (ServerVersion >= new Version(8, 3, 10) && ServerVersion < new Version(8, 4, 0)) ||
-                     (ServerVersion >= new Version(8, 2, 16) && ServerVersion < new Version(8, 3, 0)) ||
-                     (ServerVersion >= new Version(8, 1, 20) && ServerVersion < new Version(8, 2, 0)) ||
-                     (ServerVersion >= new Version(8, 0, 24) && ServerVersion < new Version(8, 1, 0)) ||
-                     (ServerVersion >= new Version(7, 4, 28) && ServerVersion < new Version(8, 0, 0)));
-
-            // Per the PG documentation, E string literal prefix support appeared in PG version 8.1.
-            // Note that it is possible that support for this prefix will vanish in some future version
-            // of Postgres, in which case this test will need to be revised.
-            // At that time it may also be necessary to set UseConformantStrings = true here.
-            SupportsEStringPrefix = (ServerVersion >= new Version(8, 1, 0));
-
-            // Per the PG documentation, hex string encoding format support appeared in PG version 9.0.
-            SupportsHexByteFormat = (ServerVersion >= new Version(9, 0, 0));
-
-            // Range data types
-            SupportsRangeTypes = (ServerVersion >= new Version(9, 2, 0));
         }
 
         /// <summary>
         /// Whether the backend is an AWS Redshift instance
         /// </summary>
-        internal bool IsRedshift
-        {
-            get { return _settings.ServerCompatibilityMode == ServerCompatibilityMode.Redshift; }
-        }
+        bool IsRedshift => _settings.ServerCompatibilityMode == ServerCompatibilityMode.Redshift;
 
         #endregion Supported features
 
@@ -1960,20 +1946,9 @@ namespace Npgsql
             }
         }
 
-        ///<summary>
-        /// Returns next portal index.
-        ///</summary>
-        internal String NextPortalName()
-        {
-            return _portalNamePrefix + (++_portalIndex);
-        }
-
-        int _portalIndex;
-        const String _portalNamePrefix = "p";
-
-        ///<summary>
+        /// <summary>
         /// Returns next plan index.
-        ///</summary>
+        /// </summary>
         internal string NextPreparedStatementName()
         {
             return PreparedStatementNamePrefix + (++_preparedStatementIndex);
