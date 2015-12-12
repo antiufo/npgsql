@@ -148,12 +148,12 @@ namespace NpgsqlTypes
                 switch (_type)
                 {
                 case InternalType.FiniteUtc:
+                case InternalType.Infinity:
+                case InternalType.NegativeInfinity:
                     return DateTimeKind.Utc;
                 case InternalType.FiniteLocal:
                     return DateTimeKind.Local;
                 case InternalType.FiniteUnspecified:
-                case InternalType.Infinity:
-                case InternalType.NegativeInfinity:
                     return DateTimeKind.Unspecified;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -193,8 +193,6 @@ namespace NpgsqlTypes
         {
             switch (_type)
             {
-            case InternalType.FiniteUnspecified:
-                // Treat as Local
             case InternalType.FiniteLocal:
                 if (_date.DaysSinceEra >= 1 && _date.DaysSinceEra <= MaxDateTimeDay - 1)
                 {
@@ -204,6 +202,7 @@ namespace NpgsqlTypes
                 // Else there are no DST rules available in the system for outside the DateTime range, so just use the base offset
                 return new NpgsqlDateTime(Subtract(TimeZoneInfo.Local.BaseUtcOffset).Ticks, DateTimeKind.Utc);
             case InternalType.FiniteUtc:
+            case InternalType.FiniteUnspecified:
             case InternalType.Infinity:
             case InternalType.NegativeInfinity:
                 return this;

@@ -81,10 +81,9 @@ namespace Npgsql.TypeHandlers.DateTimeHandlers
                 switch (dt.Kind)
                 {
                 case DateTimeKind.Utc:
+                case DateTimeKind.Unspecified:
                     buf.WriteInt32(0);
                     break;
-                case DateTimeKind.Unspecified:
-                    // Treat as local...
                 case DateTimeKind.Local:
                     buf.WriteInt32(-(int)(TimeZoneInfo.Local.BaseUtcOffset.Ticks / TimeSpan.TicksPerSecond));
                     break;

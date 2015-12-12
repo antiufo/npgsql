@@ -514,7 +514,7 @@ namespace NpgsqlTypes
             case InternalType.NegativeInfinity:
                 throw new InvalidCastException("Infinity values can't be cast to DateTime");
             case InternalType.Finite:
-                try { return new DateTime(date._daysSinceEra*NpgsqlTimeSpan.TicksPerDay); }
+                try { return new DateTime(date._daysSinceEra*NpgsqlTimeSpan.TicksPerDay, DateTimeKind.Utc); }
                 catch { throw new InvalidCastException(); }
             default:
                 throw PGUtil.ThrowIfReached();
