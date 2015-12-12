@@ -524,7 +524,13 @@ namespace Npgsql
                         else
                         {
                             var sslStream = new SslStream(_stream, false, certificateValidationCallback);
+#if CORECLR
+                            var t = sslStream.AuthenticateAsClientAsync(Host, clientCertificates, SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12, false);
+                            t.Wait();
+                            t.GetAwaiter().GetResult();
+#else
                             sslStream.AuthenticateAsClient(Host, clientCertificates, SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12, false);
+#endif
                             _stream = sslStream;
                         }
                         timeout.Check();
