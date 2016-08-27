@@ -358,7 +358,9 @@ namespace Npgsql
         /// </summary>
         [Category("Connection")]
         [Description("The password to connect with. Not required if using IntegratedSecurity.")]
+#if !CORECLR
         [PasswordPropertyText(true)]
+#endif
         [DisplayName("Password")]
         [NpgsqlConnectionStringProperty("PSW", "PWD")]
         public string Password
