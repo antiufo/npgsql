@@ -1,9 +1,0 @@
-﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
-<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <PropertyGroup Condition="'$(NuGetPackageRoot)' == ''">
-    <NuGetPackageRoot>C:\Users\Andrea\.nuget\packages\</NuGetPackageRoot>
-  </PropertyGroup>
-  <ImportGroup>
-    <Import Project="$(NuGetPackageRoot)\AsyncRewriter\0.6.0\build\AsyncRewriter.targets" Condition="Exists('$(NuGetPackageRoot)\AsyncRewriter\0.6.0\build\AsyncRewriter.targets')" />
-  </ImportGroup>
-</Project>

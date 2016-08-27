@@ -42,7 +42,7 @@
     ]
   },
   "tools": {
-    "dotnet-rewrite-async": "0.8.6"
+    "dotnet-shaman-rewrite-async": "0.8.6"
   },
   "dependencies": {
     "Shaman.AsyncRewriter": { "version": "1.0.1.1", "type": "build" }
