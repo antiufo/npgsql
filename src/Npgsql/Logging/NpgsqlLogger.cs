@@ -23,6 +23,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 #pragma warning disable 1591
@@ -37,6 +38,7 @@ namespace Npgsql.Logging
         public abstract bool IsEnabled(NpgsqlLogLevel level);
         public abstract void Log(NpgsqlLogLevel level, int connectorId, string msg, Exception exception = null);
 
+        [Conditional("TRACE")]
         internal void Trace(string msg, int connectionId = 0) { Log(NpgsqlLogLevel.Trace, connectionId, msg); }
         internal void Debug(string msg, int connectionId = 0) { Log(NpgsqlLogLevel.Debug, connectionId, msg); }
         internal void Info(string msg,  int connectionId = 0) { Log(NpgsqlLogLevel.Info,  connectionId, msg); }
@@ -52,7 +54,8 @@ namespace Npgsql.Logging
         internal void Error(string msg, params object[] args) { Log(NpgsqlLogLevel.Error, String.Format(msg, args)); }
         internal void Fatal(string msg, params object[] args) { Log(NpgsqlLogLevel.Fatal, String.Format(msg, args)); }
          */
-
+        
+        [Conditional("TRACE")]
         internal void Trace(string msg, Exception ex, int connectionId = 0) { Log(NpgsqlLogLevel.Trace, connectionId, msg, ex); }
         internal void Debug(string msg, Exception ex, int connectionId = 0) { Log(NpgsqlLogLevel.Debug, connectionId, msg, ex); }
         internal void Info(string msg,  Exception ex, int connectionId = 0) { Log(NpgsqlLogLevel.Info,  connectionId, msg, ex); }
