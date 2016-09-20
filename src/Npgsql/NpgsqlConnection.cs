@@ -27,7 +27,7 @@ using System.Data;
 using System.Data.Common;
 using System.Reflection;
 using System.Resources;
-#if CORECLR
+#if !SYSTEM_REIMPL
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -57,7 +57,7 @@ namespace Npgsql
 #if WITHDESIGN
     [System.Drawing.ToolboxBitmapAttribute(typeof(NpgsqlConnection))]
 #endif
-#if DNXCORE50 || DOTNET
+#if DNXCORE50 || DOTNET || NETSTANDARD
     public sealed partial class NpgsqlConnection : DbConnection
 #else
     // ReSharper disable once RedundantNameQualifier

@@ -31,7 +31,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
-#if CORECLR
+#if !SYSTEM_REIMPL
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Security;
 #else
@@ -524,7 +524,7 @@ namespace Npgsql
                         else
                         {
                             var sslStream = new SslStream(_stream, false, certificateValidationCallback);
-#if CORECLR
+#if NETSTANDARD
                             var t = sslStream.AuthenticateAsClientAsync(Host, clientCertificates, SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12, false);
                             t.Wait();
                             t.GetAwaiter().GetResult();
@@ -666,7 +666,7 @@ namespace Npgsql
                 Log.Trace("Attempting to connect to " + ips[i], Id);
                 var ep = new IPEndPoint(ips[i], Port);
                 var socket = new Socket(ep.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-#if DNXCORE50
+#if DNXCORE50 || NETSTANDARD
                 var connectTask = socket.ConnectAsync(ep);
 #else
                 var connectTask = Task.Factory.FromAsync(socket.BeginConnect, socket.EndConnect, ep, null);

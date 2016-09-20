@@ -24,7 +24,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-#if CORECLR
+#if !SYSTEM_REIMPL
 using System.Security.Cryptography;
 #else
 using System.Security.Cryptography.Reimpl;

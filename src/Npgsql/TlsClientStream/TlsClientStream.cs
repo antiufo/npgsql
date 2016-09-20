@@ -32,7 +32,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Numerics;
-#if CORECLR
+#if !SYSTEM_REIMPL
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -87,7 +87,7 @@ namespace TlsClientStream
         bool _noRenegotiationExtensionSupportIsFatal = false;
         string _hostName = null;
         X509CertificateCollection _clientCertificates;
-        System.Net.Security.Reimpl.RemoteCertificateValidationCallback _remoteCertificationValidationCallback;
+        RemoteCertificateValidationCallback _remoteCertificationValidationCallback;
         bool _checkCertificateRevocation;
 
         bool _waitingForChangeCipherSpec;
@@ -950,7 +950,7 @@ namespace TlsClientStream
             _handshakeData.CertList = new List<X509Certificate2>();
             _handshakeData.CertChain = new X509Chain();
             _handshakeData.CertChain.ChainPolicy.RevocationMode = _checkCertificateRevocation ? X509RevocationMode.Online : X509RevocationMode.NoCheck;
-            var errors = System.Net.Security.Reimpl.SslPolicyErrors.None;
+            var errors = SslPolicyErrors.None;
 
             var totalLen = Utils.ReadUInt24(buf, ref pos);
             if (totalLen == 0)
@@ -989,17 +989,17 @@ namespace TlsClientStream
             {
                 hostnameError = !Utils.HostnameInCertificate(_handshakeData.CertList[0], _hostName);
                 if (hostnameError)
-                    errors |= System.Net.Security.Reimpl.SslPolicyErrors.RemoteCertificateNameMismatch;
+                    errors |= SslPolicyErrors.RemoteCertificateNameMismatch;
             }
             var hasChainStatus = _handshakeData.CertChain.ChainStatus != null;
             if (hasChainStatus && _handshakeData.CertChain.ChainStatus.Length > 0)
             {
-                errors |= System.Net.Security.Reimpl.SslPolicyErrors.RemoteCertificateChainErrors;
+                errors |= SslPolicyErrors.RemoteCertificateChainErrors;
             }
 
             bool success = _remoteCertificationValidationCallback != null
                 ? _remoteCertificationValidationCallback(this, _handshakeData.CertList[0], _handshakeData.CertChain, errors)
-                : errors == System.Net.Security.Reimpl.SslPolicyErrors.None;
+                : errors == SslPolicyErrors.None;
 
             if (!success)
             {
@@ -1010,7 +1010,7 @@ namespace TlsClientStream
                 else
                 {
                     var errorMsg = "Server certificate was not accepted.";
-                    if ((errors & System.Net.Security.Reimpl.SslPolicyErrors.RemoteCertificateChainErrors) != 0)
+                    if ((errors & SslPolicyErrors.RemoteCertificateChainErrors) != 0)
                         errorMsg += " Chain status: " + string.Join(", ", _handshakeData.CertChain.ChainStatus.Select(s => s.StatusInformation)) + ".";
                     if (hostnameError)
                         errorMsg += " The specified hostname was not present in the certificate.";
@@ -1154,7 +1154,7 @@ namespace TlsClientStream
             Buffer.BlockCopy(buf, pos, signature, 0, signatureLen);
             pos += signatureLen;
 
-            System.Security.Cryptography.Reimpl.HashAlgorithm alg = null;
+            HashAlgorithm alg = null;
             switch (hashAlgorithm)
             {
                 case TLSHashAlgorithm.SHA1: alg = new SHA1CryptoServiceProvider(); break;

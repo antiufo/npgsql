@@ -660,7 +660,7 @@ namespace Npgsql
                     var networkStream = Underlying as NetworkStream;
                     if (networkStream == null)
                     {
-#if !CORECLR
+#if !CORECLR && !NETSTANDARD
                         var tls = Underlying as global::TlsClientStream.TlsClientStream;
                         if (tls != null)
                         {

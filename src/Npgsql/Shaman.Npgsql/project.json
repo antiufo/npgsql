@@ -56,16 +56,12 @@
         "System.DirectoryServices": "4.0",
         "System.Numerics": "4.0",
         "System.Xml": "4.0"
-      },
-      "dependencies": {
-        "Shaman.SystemReimpl": "1.0.0-beta-2555"
       }
     },
     "netstandard1.3": {
       "buildOptions": {
         "define": [
-          "CORECLR",
-          "DNXCORE50"
+          "NETSTANDARD"
         ]
       },
       "imports": [

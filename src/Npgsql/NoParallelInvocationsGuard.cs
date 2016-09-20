@@ -10,7 +10,7 @@ namespace Npgsql
 {
     internal class NoParallelInvocationsGuard
     {
-#if !CORECLR
+#if !NETSTANDARD
         private string StackTrace;
 #endif
         private int busy;
@@ -19,7 +19,7 @@ namespace Npgsql
         {
             if (Interlocked.Increment(ref busy) != 1)
                 System.Diagnostics.Debugger.Break();
-#if !CORECLR
+#if !NETSTANDARD
             StackTrace = new StackTrace().ToString();
 #endif
             this.Data = data;
